@@ -8,6 +8,7 @@ Date modified:  07/20/20
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 
 
 def main():
@@ -16,7 +17,30 @@ def main():
 
     config = SystemConfig()
 
+
     mc_search_cyl_var(config)
+
+    """
+    
+    # STEP 1: system configuration class
+    
+    # STEP 2: Monte Carlo search
+    
+    # STEP 3: Anamorphic zoom object
+    
+    STEP 4: CODE V analysis
+        
+        4a) Check for ray trace failures at all zooms and fields
+        
+        4b) For successful ray traces, optimize and evluate THO
+    
+    STEP 5: Demographics
+    
+        5a) Sankey plot
+        
+    STEP 6: Spherical variator
+    
+    """
 
     return
 
@@ -35,32 +59,32 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
     """
 
-    # design_form = np.array([[ 1,  1,  1,  1],
-    #                         [ 1,  1,  1, -1],
-    #                         [ 1,  1, -1,  1],
-    #                         [ 1,  1, -1, -1],
-    #                         [ 1, -1,  1,  1],
-    #                         [ 1, -1,  1, -1],
-    #                         [ 1, -1, -1,  1],
-    #                         [ 1, -1, -1, -1],
-    #                         [-1,  1,  1,  1],
-    #                         [-1,  1,  1, -1],
-    #                         [-1,  1, -1,  1],
-    #                         [-1,  1, -1, -1],
-    #                         [-1, -1,  1,  1],
-    #                         [-1, -1,  1, -1],
-    #                         [-1, -1, -1,  1],
-    #                         [-1, -1, -1, -1]])
-
     # Initialize variables
 
-    design_form = np.array([1, -1, 1, 1])
+    num_trial = int(num_trial)
 
-    # TEMP: Loop until a valid solution is found
+    design_forms = np.array([[ 1,  1,  1,  1],
+                             [ 1,  1,  1, -1],
+                             [ 1,  1, -1,  1],
+                             [ 1,  1, -1, -1],
+                             [ 1, -1,  1,  1],
+                             [ 1, -1,  1, -1],
+                             [ 1, -1, -1,  1],
+                             [ 1, -1, -1, -1],
+                             [-1,  1,  1,  1],
+                             [-1,  1,  1, -1],
+                             [-1,  1, -1,  1],
+                             [-1,  1, -1, -1],
+                             [-1, -1,  1,  1],
+                             [-1, -1,  1, -1],
+                             [-1, -1, -1,  1],
+                             [-1, -1, -1, -1]])
 
-    flag = True
+    sols = []
 
-    while flag:
+    # Loop over Monte Carlo trials
+
+    for i in range(num_trial):
 
         # Guess random values for system TTL and BFL
 
@@ -68,7 +92,11 @@ def mc_search_cyl_var(config, num_trial=1e6):
         ttl = rand_rng(config.ttl_rng[0], config.ttl_rng[1], sign=1)
         oal = ttl - bfl
 
-        # STEP 1: Look for solution(s) in X
+        # Randomly pick a design form
+
+        design_form = design_forms[np.random.randint(0, design_forms.shape[0])]
+
+        # Look for solution(s) in X
 
         # Guess random group focal lengths including for the stationary groups
         # and x-oriented moving groups
@@ -87,51 +115,57 @@ def mc_search_cyl_var(config, num_trial=1e6):
         sols_x = check_four_group(config.efx, oal, bfl, f1, f2_x, f3_x, f4,
                                   min_air=10)
 
-        # Solution(s) found in X
+        # Loop over solutions in X, if any were found
 
-        if len(sols_x) > 0:
+        for sol_x in sols_x:
 
-            # Loop over solutions in X
+            # Look for solution(s) in Y
 
-            for sol_x in sols_x:
+            # Guess random group focal lengths including for the y-oriented
+            # moving groups only, not the stationary first and fourth groups
+            # which are the same as in the X solution
 
-                # STEP 2: Look for solution(s) in Y
+            f2_y = rand_rng(config.efl_group_rng[0],
+                            config.efl_group_rng[1], sign=design_form[1])
+            f3_y = rand_rng(config.efl_group_rng[0],
+                            config.efl_group_rng[1], sign=design_form[2])
 
-                # Guess random group focal lengths including for the y-oriented
-                # moving groups only, not the stationary first and fourth groups
-                # which are the same as in the X solution
+            # Check for valid four group zoom solution(s) taking into
+            # account solution found in X
 
-                f2_y = rand_rng(config.efl_group_rng[0],
-                                config.efl_group_rng[1], sign=design_form[1])
-                f3_y = rand_rng(config.efl_group_rng[0],
-                                config.efl_group_rng[1], sign=design_form[2])
+            sols_y = check_four_group(config.efy, oal, bfl, f1, f2_y, f3_y,
+                                      f4, min_air=10, sol_check=sol_x)
 
-                # Check for valid four group zoom solution(s) taking into
-                # account solution found in X
+            # Loop over solutions in X and Y, if any were found
 
-                sols_y = check_four_group(config.efy, oal, bfl, f1, f2_y, f3_y,
-                                          f4, min_air=10, sol_check=sol_x)
+            for sol_y in sols_y:
 
-                # Solution(s) found in Y
+                # Combine X and Y solutions for group focal lengths, zoom
+                # motions, and group types
 
-                if len(sols_y) > 0:
+                group_efl, \
+                group_z, \
+                group_type = combine_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x,
+                                          f3_y, f4)
 
-                    # Loop over solutions in X and Y
+                # Create anamorphic zoom solution and add to solution
+                # list
 
-                    for sol_y in sols_y:
+                ana_zoom = AnamorphicZoom(config, group_efl, group_type,
+                                          group_z)
+                print(ana_zoom)
 
-                        # Plot solution
+                # Plot solution
 
-                        fig, ax = plt.subplots()
+                ana_zoom.plot_zoom()
 
-                        ax.plot(config.efx, sol_x.transpose(),
-                                color='blue')
-                        ax.plot(config.efx, sol_y[1: -1, :].transpose(),
-                                color='green')
+                # Add to solution list
 
-                        flag = False
+                sols.append(ana_zoom)
 
-    return
+                return
+
+    return sols
 
 
 def rand_rng(min_val, max_val, sign=1):
@@ -342,6 +376,62 @@ def calc_zoom_motion(M, L, t2, oal, bfl, f2, s4, efl):
     return z
 
 
+def combine_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x, f3_y, f4):
+
+    # Initialize data structures
+
+    group_efl = np.empty(6)
+    group_z = np.empty((6, sol_x.shape[1]))
+    group_type = np.empty(6, dtype='<U2')
+
+    # Store values for stationary first and last groups
+
+    group_efl[0] = f1
+    group_efl[-1] = f4
+
+    group_z[0, :] = sol_x[0, :]
+    group_z[-1, :] = sol_x[-1, :]
+
+    group_type[0] = 'XY'
+    group_type[-1] = 'XY'
+
+    # Determine variator order in X and Y
+
+    if sol_x[1, 0] > sol_y[1, 0]:
+        group_efl[1] = f2_x
+        group_efl[2] = f2_y
+        group_z[1, :] = sol_x[1, :]
+        group_z[2, :] = sol_y[1, :]
+        group_type[1] = 'X'
+        group_type[2] = 'Y'
+    else:
+        group_efl[1] = f2_y
+        group_efl[2] = f2_x
+        group_z[1, :] = sol_y[1, :]
+        group_z[2, :] = sol_x[1, :]
+        group_type[1] = 'Y'
+        group_type[2] = 'X'
+
+    # Determine compensator order in X and Y
+
+    if sol_x[2, 0] > sol_y[2, 0]:
+        group_efl[3] = f3_x
+        group_efl[4] = f3_y
+        group_z[3, :] = sol_x[2, :]
+        group_z[4, :] = sol_y[2, :]
+        group_type[3] = 'X'
+        group_type[4] = 'Y'
+    else:
+        group_efl[3] = f3_y
+        group_efl[4] = f3_x
+        group_z[3, :] = sol_y[2, :]
+        group_z[4, :] = sol_x[2, :]
+        group_type[3] = 'Y'
+        group_type[4] = 'X'
+
+    return group_efl, group_z, group_type
+
+
 class SystemConfig:
 
     """
@@ -354,7 +444,7 @@ class SystemConfig:
 
     def __init__(self, ana_rat=2., efl_sys_rng=np.array([28., 76.]),
                  bfl_rng=np.array([35., 65.]), ttl_rng=np.array([240., 365.]),
-                 efl_group_rng=np.array([20, 500]), num_zoom=5, fno=4.,
+                 efl_group_rng=np.array([20, 500]), num_zoom=45, fno=4.,
                  img_dim=np.array([22.31, 18.67]),
                  wl=np.array([656.3, 587.6, 486.1]), wl_ref=1):
         
@@ -377,7 +467,7 @@ class SystemConfig:
         efl_group_rng:      (2,) array of group effective focal length range
                             [mm]; really the absolute value
 
-        num_zoom:           number of zoom positions
+        num_zoom:           number of zoom positions to evaluate in the design
 
         fno:                f/number
 
@@ -476,27 +566,230 @@ class SystemConfig:
         self.xan *= scale_fact
         self.yan *= scale_fact
 
-        # # TEMP: plot
-        #
-        # fig, axs = plt.subplots(1, self.num_zoom)
-        #
-        # for z in range(self.num_zoom):
-        #     axs[z].scatter(np.degrees(self.xan[:, z]),
-        #                    np.degrees(self.yan[:, z]))
-        #     axs[z].set(xlabel='X field angle [deg]',
-        #                ylabel='Y field angle [deg]',
-        #                title='EFX = {0:0.2f} mm\nEFY = {1:0.2f} mm'
-        #                      .format(self.efx[z], self.efy[z]))
-        #     axs[z].set_aspect('equal')
-
         return
+
+    def plot_fov(self):
+
+        """
+
+
+        Plots the field-of-view.
+
+
+        """
+
+        # Loop over zoom positions
+
+        for z in [0, -1]:
+
+            # Initialize figure
+
+            fig, ax = plt.subplots()
+
+            # Plot field points
+
+            ax.scatter(np.degrees(self.xan[:, z]),
+                       np.degrees(self.yan[:, z]))
+
+            # Plot settings
+
+            ax.set(title='EFX = {0:0.2f} mm\nEFY = {1:0.2f} mm'
+                         .format(self.efx[z], self.efy[z]),
+                   xlabel='X field angle [deg]', ylabel='Y field angle [deg]')
+            ax.set_aspect('equal')
 
 
 class AnamorphicZoom:
 
-    def __init__(self):
+    """
+
+
+    Anamorphic zoom design object
+
+
+    """
+
+    def __init__(self, config, group_efl, group_type, group_z, num_zoom=5):
+
+        """
+
+
+        Initialize anamorphic zoom design object
+
+
+        config:         system configuration object
+
+        group_efl:      (m,) array of group effective focal lengths [mm]
+
+        group_type:     (m,) array of group types [str];
+                        'XY' = spherical
+                        'X'  = cylindrical oriented in X
+                        'Y'  = cylindrical oriented in Y
+
+        group_z:        (m, n) array of zoom motions for the n evaluated zoom
+                        positions [mm]
+
+        num_zoom:       number of zoom positions to consider for the design
+
+        """
+
+        # Initialize variables
+
+        self.config = config
+        self.group_efl = group_efl
+        self.group_type = group_type
+        self.group_z = group_z
+        self.num_zoom = num_zoom
+
+        # Calculate basic values
+
+        self.num_group = self.group_efl.size
+        self.ttl = self.group_z[0, 0]
+        self.bfl = self.group_z[-1, 0]
+        self.oal = self.ttl - self.bfl
+
+        # Calculate even spacing indices
+
+        self.even_ind = np.linspace(0, config.num_zoom - 1, 5).astype(int)
+
+        # Calculate zoom position focal lengths
+
+        self.efx = config.efx[self.even_ind]
+        self.efy = config.efy[self.even_ind]
+
+        # Classify solution type
+
+        self.classify()
+
+    def __repr__(self):
+
+        repr_str = '\n' + 10 * '~' + ' ANAMORPHIC ZOOM SOLUTION ' + 10 * '~' + \
+                   '\n\n'
+
+        repr_str += 'Variator type:\t\t{0}\n'.format(self.vari_str.capitalize())
+        repr_str += 'Solution type:\t\t{0}\n'.format(self.sol_str)
+        repr_str += 'Cyl. orient.:\t\t{0}\n\n'.format(self.orient_str)
+
+        repr_str += 'Groups:\n\n'
+
+        template = '{0:>4.0f}{1:>8s}{2:>8s}{3:>14.4f} mm\n'
+        for i in range(self.num_group):
+
+            group = np.ceil(i / 2).astype(int) + 1
+            surf_type = 'CYL'
+            if self.group_type[i] == 'XY':
+                surf_type = 'SPH'
+
+            surf_orient = '-'
+            if surf_type == 'CYL':
+                surf_orient = self.group_type[i]
+
+            repr_str += template.format(group, surf_type, surf_orient,
+                                        self.group_efl[i])
+
+        repr_str += '\n' + (2 * 10 + 26) * '~' + '\n\n'
+
+        return repr_str
+
+    def classify(self):
+
+        # Classify power
+
+        self.sol_str = ''
+
+        for i in [0, 1, 3, -1]:
+            if self.group_efl[i] > 0:
+                self.sol_str += 'P'
+            else:
+                self.sol_str += 'N'
+
+        # Classify cylinder orientation
+
+        self.orient_str = ''
+        for char in self.group_type[self.group_type != 'XY']:
+            self.orient_str += char
+
+        # Classify variator type
+
+        if self.num_group == 5:
+            self.vari_str = 'spherical'
+        elif self.num_group == 6:
+            self.vari_str = 'cylindrical'
+
+    def plot_zoom(self):
+
+        # Initialize plot variables
+
+        clrs = np.empty_like(self.group_type)
+        clrs[self.group_type == 'XY'] = 'b'
+        clrs[self.group_type == 'X'] = 'g'
+        clrs[self.group_type == 'Y'] = 'g'
+
+        lstyles = np.empty_like(self.group_type)
+        lstyles[self.group_type == 'XY'] = '-'
+        lstyles[self.group_type == 'X'] = '-'
+        lstyles[self.group_type == 'Y'] = '--'
+
+        # Initialize figure
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        plt.subplots_adjust(left=0.25, right=0.65)
+
+        # Create second y-axis
+
+        ax_par = ax.twinx()
+        ax_par.spines["left"].set_position(("axes", -0.2))
+        ax_par.set_frame_on(True)
+        ax_par.patch.set_visible(False)
+        for sp in ax_par.spines.values():
+            sp.set_visible(False)
+        ax_par.spines["left"].set_visible(True)
+        ax_par.yaxis.set_label_position('left')
+        ax_par.yaxis.set_ticks_position('left')
+
+        # Plot zoom
+
+        for i in range(self.num_group):
+
+            # Form legend string
+
+            group_ind = np.ceil(i / 2).astype(int) + 1
+
+            type_str = self.group_type[i]
+            if type_str == 'XY':
+                type_str = ''
+
+            subscript_str = '{0}'.format(group_ind) + type_str
+            leg_str = r'$f_{{{0:2s}}}$ = {1:0.2f} mm'.format(subscript_str,
+                                                             self.group_efl[i])
+
+            # Plot zoom motion
+
+            ax.plot(self.group_z[i, :], self.config.efx, color=clrs[i],
+                    linestyle=lstyles[i], label=leg_str)
+
+            ax_par.plot(self.group_z[i, :], self.config.efy, color='none')
+
+        # Set plot settings
+
+        ax.set(title=self.sol_str + '  /  ' + self.orient_str,
+               xlabel="z [mm]",
+               ylabel="EFX [mm]")
+        ax_par.set(ylabel="EFY [mm]")
+
+        ax.set_xlim(self.ttl * 1.1, 0)
+
+        ax.set_yticks(self.efx)
+        ax.set_yticklabels(self.efx)
+        ax.yaxis.set_major_formatter(FormatStrFormatter('%.0f'))
+        ax_par.set_yticks(self.efy)
+        ax_par.set_yticklabels(self.efy)
+        ax_par.yaxis.set_major_formatter(FormatStrFormatter('%.0f'))
+
+        ax.legend(bbox_to_anchor=(1.04, 1), loc="upper left")
 
         return
+
 
 if __name__ == '__main__':
     main()
