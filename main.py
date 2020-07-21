@@ -6,6 +6,7 @@ Date modified:  07/20/20
 
 """
 
+from codev import create_ana_zoom
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
@@ -17,8 +18,9 @@ def main():
 
     config = SystemConfig()
 
+    sols = mc_search_cyl_var(config)
 
-    mc_search_cyl_var(config)
+    create_ana_zoom(sols[0])
 
     """
     
@@ -29,10 +31,12 @@ def main():
     # STEP 3: Anamorphic zoom object
     
     STEP 4: CODE V analysis
+    
+        4a) Create CODE V design
         
-        4a) Check for ray trace failures at all zooms and fields
+        4b) Check for ray trace failures at all zooms and fields
         
-        4b) For successful ray traces, optimize and evluate THO
+        4c) For successful ray traces, optimize and evluate THO
     
     STEP 5: Demographics
     
@@ -163,7 +167,7 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
                 sols.append(ana_zoom)
 
-                return
+                return sols
 
     return sols
 
@@ -509,6 +513,14 @@ class SystemConfig:
 
         self.set_fov()
 
+    def __repr__(self):
+
+        # TODO
+
+        repr_str = ''
+
+        return repr_str
+
     def set_fov(self, scale_fact=1.):
 
         """
@@ -558,8 +570,8 @@ class SystemConfig:
 
         # Calculate angular FOV
 
-        self.xan = np.arctan(np.reshape(xim, (self.num_fld, 1)) / self.efx)
-        self.yan = np.arctan(np.reshape(yim, (self.num_fld, 1)) / self.efy)
+        self.xan = np.arctan(xim / np.reshape(self.efx, (self.num_zoom, 1)))
+        self.yan = np.arctan(yim / np.reshape(self.efy, (self.num_zoom, 1)))
 
         # Scale by scale factor
 
@@ -650,12 +662,12 @@ class AnamorphicZoom:
 
         # Calculate even spacing indices
 
-        self.even_ind = np.linspace(0, config.num_zoom - 1, 5).astype(int)
+        self.ind = np.linspace(0, config.num_zoom - 1, 5).astype(int)
 
         # Calculate zoom position focal lengths
 
-        self.efx = config.efx[self.even_ind]
-        self.efy = config.efy[self.even_ind]
+        self.efx = config.efx[self.ind]
+        self.efy = config.efy[self.ind]
 
         # Classify solution type
 
