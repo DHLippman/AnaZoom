@@ -7,9 +7,10 @@ Date modified:  07/22/20
 """
 
 from designs import AnamorphicZoom, Solutions
-from codev import opti_ana_zoom, avg_spot_size
+from codev import opti_ana_zoom, avg_spot_size, avg_group_efl, avg_clear_aper
 from utilities import rand_rng, get_time_str, folder_exist, save_obj
 import numpy as np
+from time import time
 
 
 def mc_search_cyl_var(config, num_trial=1e6):
@@ -48,17 +49,21 @@ def mc_search_cyl_var(config, num_trial=1e6):
                              [-1, -1, -1,  1],
                              [-1, -1, -1, -1]])
 
+    # Create solutions object
+
     sols = Solutions(config, num_trial)
 
-    progress = (num_trial * np.linspace(0.1, 1, 10)).astype(int)
+    # Create folder to store CODE V solutions in
 
-    # Create folder to store solutions ins
-
-    start_time = get_time_str()
+    time_str = get_time_str()
     path = 'C:\\CVUSER\\Anamorphic Zoom Solutions\\Cylindrical Variator\\' \
-           + start_time + '\\'
-
+           + time_str + '\\'
     folder_exist(path)
+
+    # Set up progress bar and timer
+
+    progress = (num_trial * np.linspace(0.1, 1, 10)).astype(int)
+    start_time = time()
 
     # Loop over Monte Carlo trials
 
@@ -121,6 +126,12 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
             for sol_y in sols_y:
 
+                """
+                
+                Successful first order solution
+                
+                """
+
                 # Combine X and Y solutions for group focal lengths, zoom
                 # motions, and group types
 
@@ -129,52 +140,78 @@ def mc_search_cyl_var(config, num_trial=1e6):
                 group_type = combine_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x,
                                           f3_y, f4)
 
-                # Create anamorphic zoom solution and add to solution
-                # list
+                # Create anamorphic zoom design
 
                 ana_zoom = AnamorphicZoom(config, group_efl, group_type,
                                           group_z)
-                # print(ana_zoom)
 
                 # Create model in CODE V
 
                 ana_zoom.make_codev()
 
-                # Create model and check ray trace in CODE V
+                # Check ray trace in CODE V at all zooms and fields
 
                 ana_zoom.check_ray_trace()
 
-                # Successful ray trace
+                # Successful ray trace at all zooms and fields
 
-                if not ana_zoom.ray_fail:
+                if ana_zoom.ray_trace:
 
-                    # Optimize
+                    """
+                    
+                    Successful ray traceable solution
+                    
+                    """
 
-                    opti_ana_zoom()
+                    # Optimize first order design
+
+                    ana_zoom.optimize()
 
                     # Calculate average spot size
 
                     ana_zoom.avg_spot_size = avg_spot_size()
 
-                    # Save CODE V model
+                    # Calculate average group efl
 
-                    ana_zoom.save_seq(sol_num=i, path=path)
+                    ana_zoom.avg_group_efl = avg_group_efl(ana_zoom.num_group)
 
-                # Add to general solution list
+                    # Calculate average group efl
+
+                    ana_zoom.avg_clear_aper = avg_clear_aper()
+
+                    # Write design to CODE V sequence file
+
+                    ana_zoom.save_seq(sol_num=sols.num_sol, path=path)
+
+                # Add design to solutions
 
                 sols.add_sol(ana_zoom)
 
         # Check status
 
         if i + 1 in progress:
-            perc = 100 * (np.asscalar(np.argwhere(i + 1 == progress)) + 1) / \
+
+            perc = (np.asscalar(np.argwhere(i + 1 == progress)) + 1) / \
                    progress.size
-            print('{0:0.0f}% complete'.format(perc))
+            cur_time = time()
+            pass_time = cur_time - start_time
+            full_time = pass_time / perc
+            remain_time = full_time - pass_time
+            print('{0:0.0f}% complete\n'.format(perc * 100))
+            if remain_time > 3600:
+                print('Approximately {0:0.2f} hours remaining'
+                      .format(remain_time / 3600))
+            elif remain_time > 60:
+                print('Approximately {0:0.2f} minutes remaining'
+                      .format(remain_time / 60))
+            elif remain_time > 0:
+                print('Approximately {0:0.2f} seconds remaining'
+                      .format(remain_time))
             print(sols)
 
     # Save solutions to file
 
-    save_obj(sols, filename=start_time)
+    save_obj(sols, filename=time_str)
 
     return sols
 
@@ -360,6 +397,32 @@ def calc_zoom_motion(M, L, t2, oal, bfl, f2, s4, efl):
 
 
 def combine_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x, f3_y, f4):
+
+    """
+
+
+    Combines solutions in X and Y into a single XY design
+
+
+    sol_x:      (m, n) array of X solution zoom motion with m groups and n zoom
+                positions [mm]
+
+    sol_y:      (m, n) array of Y solution zoom motion with m groups and n zoom
+                positions [mm]
+
+    f1:         focal length of group 1 in X and Y [mm]
+
+    f2_x:       focal length of group 2 in X [mm]
+
+    f2_y:       focal length of group 2 in Y [mm]
+
+    f3_x:       focal length of group 3 in X [mm]
+
+    f3_y:       focal length of group 3 in Y [mm]
+
+    f4:         focal length of group 4 in X and Y [mm]
+
+    """
 
     # Initialize data structures
 

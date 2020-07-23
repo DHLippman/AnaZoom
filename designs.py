@@ -6,7 +6,7 @@ Date modified:  07/22/20
 
 """
 
-from codev import create_ana_zoom, ray_fail, save_seq
+from codev import create_ana_zoom, ray_trace, opti_ana_zoom, save_seq
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
@@ -194,9 +194,10 @@ class SystemConfig:
 
         """
 
-        # Loop over zoom positions
+        # Loop over first and final zoom positions
 
         for z in [0, -1]:
+
             # Initialize figure
 
             fig, ax = plt.subplots()
@@ -256,6 +257,8 @@ class AnamorphicZoom:
         self.group_z = group_z
         self.num_zoom = num_zoom
         self.avg_spot_size = 0
+        self.avg_group_efl = 0
+        self.avg_clear_aper = 0
 
         if self.num_zoom > self.config.num_zoom:
             self.num_zoom = self.config.num_zoom
@@ -290,9 +293,10 @@ class AnamorphicZoom:
         repr_str = '\n' + 10 * '~' + ' ANAMORPHIC ZOOM DESIGN ' + 10 * '~' + \
                    '\n\n'
 
-        repr_str += 'Variator type:\t\t{0}\n'.format(self.vari_str.capitalize())
-        repr_str += 'Solution type:\t\t{0}\n'.format(self.sol_type)
-        repr_str += 'Cyl. orient.:\t\t{0}\n\n'.format(self.orient_str)
+        repr_str += 'Variator type:\t\t\t{0}\n'\
+                    .format(self.vari_str.capitalize())
+        repr_str += 'Solution type:\t\t\t{0}\n'.format(self.sol_type)
+        repr_str += 'Cyl. orient.:\t\t\t{0}\n\n'.format(self.orient_str)
 
         repr_str += 'Groups:\n\n'
 
@@ -310,6 +314,18 @@ class AnamorphicZoom:
 
             repr_str += template.format(group, surf_type, surf_orient,
                                         self.group_efl[i])
+
+        repr_str += '\n'
+
+        if self.avg_spot_size:
+            repr_str += 'Avg. spot size:\t\t\t{0:0.2f} mm\n'\
+                        .format(self.avg_spot_size)
+        if self.avg_group_efl:
+            repr_str += 'Avg. group EFL:\t\t\t{0:0.2f} mm\n'\
+                        .format(self.avg_group_efl)
+        if self.avg_clear_aper:
+            repr_str += 'Avg. clear aper.:\t\t{0:0.2f} mm\n'\
+                        .format(self.avg_clear_aper)
 
         repr_str += '\n' + (2 * 10 + 24) * '~' + '\n\n'
 
@@ -345,12 +361,26 @@ class AnamorphicZoom:
         """
 
 
-        Creates anamorphic zoom model in CODE V
+        Creates anamorphic zoom design in CODE V
 
+
+        save_seq:       filename to save the design as a sequence file
 
         """
 
         create_ana_zoom(self, save_seq)
+
+    def optimize(self):
+
+        """
+
+
+        Optimizes an anamorphic zoom design in CODE V
+
+
+        """
+
+        opti_ana_zoom()
 
     def check_ray_trace(self):
 
@@ -364,9 +394,9 @@ class AnamorphicZoom:
 
         # Checks rays and stores result
 
-        self.ray_fail = ray_fail()
+        self.ray_trace = ray_trace()
 
-        return self.ray_fail
+        return self.ray_trace
 
     def save_seq(self, sol_num, path=None, out=False):
 
@@ -387,8 +417,8 @@ class AnamorphicZoom:
 
         # Create filename if not provided
 
-        filename = '{0}_{1}_trial{2}.seq'.format(self.sol_type, self.orient_str,
-                                                 sol_num)
+        filename = '{0}_{1}_sol{2}.seq'.format(self.sol_type, self.orient_str,
+                                               sol_num)
 
         # Create full path
 
@@ -597,7 +627,8 @@ class Solutions:
 
         # Add ray traceable solution, if applicable
 
-        if not sol.ray_fail:
+        if sol.ray_trace:
+
             self.sols_rt.append(sol)
             self.num_sol_rt += 1
             self.sol_type_rt[sol.sol_type] += 1

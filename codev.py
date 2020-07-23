@@ -22,7 +22,7 @@ class ICVApplicationEvents:
 
     def OnCodeVError(self, error):
         # This event handler is called when a CODE V error message is issued
-        #print("CODE V error: %s " % error)
+        # print("CODE V error: %s " % error)
         return
 
     def OnCodeVWarning(self, warning):
@@ -143,6 +143,19 @@ def num_f():
     """
 
     return eva('NUM F', dtype=int)
+
+
+def num_s():
+
+    """
+
+
+    Gets the number of surfaces
+
+
+    """
+
+    return eva('NUM S', dtype=int)
 
 
 def vec_to_str(vec, delim=' '):
@@ -749,41 +762,6 @@ def prv_cat(name, n, wl):
     cmd('END')
 
 
-def ray_fail():
-
-    """
-
-
-    Checks for ray trace failures across all defined zooms and fields
-
-
-
-    """
-
-    # Loop over zoom positions
-
-    for z in range(1, num_z() + 1):
-
-        # Loop over fields
-
-        for f in range(1, num_f() + 1):
-
-            # Loop over reference rays
-
-            for r in range(1, 6):
-
-                # Trace ray
-
-                cmd('RSI Z{0:0.0f} F{1:0.0f} R{2:0.0f}'.format(z, f, r))
-
-                # Check for ray error
-
-                if eva('RER'):
-                    return True
-
-    return False
-
-
 def save_seq(filename):
 
     """
@@ -826,8 +804,7 @@ def create_ana_zoom(ana_zoom, filename=None):
 
     # Reset system
 
-    cmd('in cv_macro:cvnewlens')
-    cmd('REC NO')  # disabling data recording speeds up COM execution
+    cmd('in cv_macro:cvnewlens_og')  # note: other users will have cvnewlens.seq
 
     # Set system settings
 
@@ -939,6 +916,41 @@ def create_ana_zoom(ana_zoom, filename=None):
     return
 
 
+def ray_trace():
+
+    """
+
+
+    Checks for ray trace failures at full field for all defined zoom positions
+
+
+    """
+
+    # Loop over zoom positions
+
+    for z in range(1, num_z() + 1):
+
+        # Loop over full fields in X, Y and XY only
+
+        for f in range(1, num_f() + 1):
+
+            # Loop over reference rays
+
+            for r in range(1, 6):
+
+                # Trace ray
+
+                cmd('RSI Z{0:0.0f} F{1:0.0f} R{2:0.0f}'.format(z, f, r))
+
+                # Check for ray error
+
+                if eva('RER'):
+
+                    return False
+
+    return True
+
+
 def opti_ana_zoom():
 
     """
@@ -954,7 +966,7 @@ def opti_ana_zoom():
 
     # Loop over surfaces
 
-    for s in range(eva('NUM S', dtype=int)):
+    for s in range(1, num_s()):
 
         # Spherical surface
 
@@ -968,6 +980,10 @@ def opti_ana_zoom():
 
             cmd('CCY S{0:0.0f} 0'.format(s))
             cmd('CCX S{0:0.0f} 0'.format(s))
+
+    # Freeze stop surface ROC
+
+    cmd('CCY SS 100')
 
     # Vary image defocus
 
@@ -1031,12 +1047,74 @@ def avg_spot_size():
 
             spo[f, z] = eva('^arr(1)', dtype=float)
 
-    # Return average size
+    # Return average spot size
 
     return spo.mean()
+
+
+def avg_group_efl(num_group):
+
+    """
+
+
+    Calculates the average group EFL (absolute value)
+
+
+    num_group:      number of groups (used for surface labels)
+
+    """
+
+    # Initialize variables
+
+    group_efl = []
+
+    # Loop over groups
+
+    for g in range(1, num_group + 1):
+
+        # Handles both spherical and cylindrical cases
+
+        efx = abs(eva("EFX S'G{0:0.0f}S'..'G{0:0.0f}E'".format(g), dtype=float))
+        efy = abs(eva("EFY S'G{0:0.0f}S'..'G{0:0.0f}E'".format(g), dtype=float))
+
+        group_efl.append(min(efx, efy))
+
+    # Return average group EFL (absolute value)
+
+    return np.array(group_efl).mean()
+
+
+def avg_clear_aper():
+
+    """
+
+
+    Calculates the average element clear aperture across all surfaces
+
+
+    """
+
+    # Initialize variables
+
+    ca = np.empty((num_s() - 1, num_z()))
+
+    # Loop over surfaces
+
+    for s in range(num_s() - 1):
+
+        # Loop over zooms
+
+        for z in range(num_z()):
+
+            ca[s, z] = 2 * eva('MAP S{0:0.0f} Z{1:0.0f}'.format(s + 1, z + 1),
+                               dtype=float)
+
+    # Return average element clear aperture
+
+    return ca.mean()
 
 
 # Initialize CODE V session
 
 cv = init_cv()
-
+cmd('REC NO')  # disabling data recording speeds up COM execution
