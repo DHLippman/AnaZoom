@@ -6,6 +6,7 @@ Date modified:  07/21/20
 
 """
 
+from utilities import find_roc
 import numpy as np
 from win32com.client import DispatchWithEvents
 import pythoncom
@@ -21,11 +22,13 @@ class ICVApplicationEvents:
 
     def OnCodeVError(self, error):
         # This event handler is called when a CODE V error message is issued
-        print("CODE V error: %s " % error)
+        # print("CODE V error: %s " % error)
+        return
 
     def OnCodeVWarning(self, warning):
         # This event handler is called when a CODE V warning message is issued
-        print("CODE V warning: %s " % warning)
+        # print("CODE V warning: %s " % warning)
+        return
 
     def OnPlotReady(self, filename, plotwindow):
         # This event handler is called when a plot file, refered to by filename,
@@ -78,7 +81,7 @@ def stop_cv(cv):
     del cv
 
 
-def cmd(s, out=True):
+def cmd(s, out=False):
     
     """
     
@@ -92,9 +95,9 @@ def cmd(s, out=True):
     
     """
 
-    print(s)
     result = cv.Command(s)
     if out:
+        print(s)
         print(result)
     return result
 
@@ -114,6 +117,45 @@ def eva(s, dtype=float):
     """
 
     return dtype(cv.EvaluateExpression('(' + s + ')'))
+
+
+def num_z():
+
+    """
+
+
+    Gets the number of zoom positions
+
+
+    """
+
+    return eva('NUM Z', dtype=int)
+
+
+def num_f():
+
+    """
+
+
+    Gets the number of field positions
+
+
+    """
+
+    return eva('NUM F', dtype=int)
+
+
+def num_s():
+
+    """
+
+
+    Gets the number of surfaces
+
+
+    """
+
+    return eva('NUM S', dtype=int)
 
 
 def vec_to_str(vec, delim=' '):
@@ -139,7 +181,7 @@ def vec_to_str(vec, delim=' '):
     return vec_str
 
 
-def set_num_z(num_z):
+def set_num_z(numz):
 
     """
 
@@ -148,17 +190,17 @@ def set_num_z(num_z):
     adds additional zoom positions.
 
 
-    num_z:          desired number of zoom positions
+    numz:           desired number of zoom positions
 
     """
 
-    while num_z > eva('NUM Z'):
-        cmd('INS Z{0:0.0f}+1'.format(eva('NUM Z')))
+    while numz > num_z():
+        cmd('INS Z{0:0.0f}+1'.format(num_z()))
 
     return
 
 
-def set_num_f(num_f):
+def set_num_f(numf):
 
     """
 
@@ -167,12 +209,12 @@ def set_num_f(num_f):
     not, adds additional field positions.
 
 
-    num_zoom:       desired number of zoom positions
+    numf:           desired number of zoom positions
 
     """
 
-    while num_f > eva('NUM F'):
-        cmd('INS F{0:0.0f}+1'.format(eva('NUM F')))
+    while numf > num_f():
+        cmd('INS F{0:0.0f}+1'.format(num_f()))
 
     return
 
@@ -205,7 +247,7 @@ def set_pupil(epd=None, fno=None, na=None, nao=None):
         # Update EPD for all zoom positions
 
         if np.isscalar(epd):
-            cmd('EPD {0:0.12f}'.format(epd))
+            cmd('EPD {0:0.12f}'.format(epd), out=False)
 
         # Update EPD for different zoom positions
 
@@ -663,7 +705,79 @@ def set_fld(yan=None, xan=None, yim=None, xim=None, yri=None, xri=None,
     return
 
 
-def create_ana_zoom(ana_zoom):
+def set_tit(sol_type, efx, efy):
+    
+    """
+    
+    
+    Sets the title for an anamorphic zoom design
+    
+    
+    sol_type:       solution type, e.g. PNPN
+
+    efx:            (m,) array of X effective focal length for m zoom positions
+
+    efy:            (m,) array of Y effective focal length for m zoom positions
+
+    """
+
+    cmd('ZOO TIT')
+    for z, (fx, fy) in enumerate(zip(efx, efy)):
+        cmd("TIT Z{0:0.0f} '{1}  /  EFX = {2:0.0f}  /  EFY = {3:0.0f}'"
+            .format(z + 1, sol_type, fx, fy))
+
+
+def prv_cat(name, n, wl):
+    
+    """
+    
+
+    Creates a private catalog glass
+
+    
+    name:       name of private catalog glass to create
+
+    n:          (m,) array of scalar of refractive index value(s) corresponding
+                to the defined wavelengths
+
+    wl:         (m, ) array of wavelengths over which the refractive index
+                values are defined [nm]
+
+    """
+
+    # Ensure wavelengths are in an array
+
+    wl = np.array(wl)
+
+    # Ensure refractive index value(s) are in an array
+
+    if np.isscalar(n):
+        n *= np.ones_like(wl)
+
+    # Create private catalog
+
+    cmd('PRV')
+    cmd('PWL' + vec_to_str(wl))
+    cmd("'{0}'".format(name) + vec_to_str(n))
+    cmd('END')
+
+
+def save_seq(filename):
+
+    """
+
+
+    Save anamorphic zoom design as CODE V sequence file
+
+
+    filename:       filename to save
+
+    """
+
+    cmd("WRL '{0}'".format(filename))
+
+
+def create_ana_zoom(ana_zoom, filename=None):
 
     """
 
@@ -673,28 +787,362 @@ def create_ana_zoom(ana_zoom):
 
     ana_zoom:       anamorphic zoom object
 
+    filename:       filename to save model as an SEQ file; if not provided,
+                    model is not saved (default)
+
     """
 
-    # Add surfaces
+    # Initialize variables
 
-    cmd('INS S1')
+    num_group_ele = 3
+
+    gla_n_pos = 1.5168  # N-BK7
+    gla_name_pos = 'GLA_P'
+
+    gla_n_neg = 1.7552  # N-SF4
+    gla_name_neg = 'GLA_N'
+
+    # Reset system
+
+    cmd('in cv_macro:cvnewlens_og')  # note: other users will have cvnewlens.seq
 
     # Set system settings
 
+    cmd('DIM M')
     set_pupil(fno=ana_zoom.config.fno * ana_zoom.config.ana_rat)
     set_wl(ana_zoom.config.wl, ana_zoom.config.wl_ref)
     set_fld(yan=np.degrees(ana_zoom.config.yan[ana_zoom.ind, :]),
             xan=np.degrees(ana_zoom.config.xan[ana_zoom.ind, :]),
             set_vig=False)
+    set_tit(ana_zoom.sol_type, ana_zoom.efx, ana_zoom.efy)
 
-    cmd('LIS')
+    # Create private catalog glasses
 
-    # End CODE V session
+    prv_cat(gla_name_pos, gla_n_pos, ana_zoom.config.wl)
+    prv_cat(gla_name_neg, gla_n_neg, ana_zoom.config.wl)
 
-    stop_cv(cv)
+    # Add surfaces
+
+    cmd('INS S2..{0:0.0f}'.format(2 * num_group_ele * ana_zoom.num_group))
+
+    # Set radii of curvature and zoomed air spaces
+
+    # Loop over groups
+
+    for g in range(ana_zoom.num_group):
+
+        # Determine and set surface type
+
+        rad_orient = 'RDY'
+        if ana_zoom.group_type[g] == 'X':
+            rad_orient = 'RDX'
+
+        # Calculate radii of curvature for all elements in group
+
+        if ana_zoom.group_efl[g] > 0:
+            R1, R2 = find_roc(ana_zoom.group_efl[g] * num_group_ele, gla_n_pos)
+        else:
+            R1, R2 = find_roc(ana_zoom.group_efl[g] * num_group_ele, gla_n_neg)
+
+        # Loop over elements in group
+
+        for e in range(num_group_ele):
+
+            # Calculate front and rear surface numbers
+
+            S1 = g * 2 * num_group_ele + 2 * e + 1
+            S2 = g * 2 * num_group_ele + 2 * e + 2
+
+            # Set surface type
+
+            if ana_zoom.group_type[g] == 'X' or ana_zoom.group_type[g] == 'Y':
+                cmd('CYL S{0:0.0f}'.format(S1))
+                cmd('CYL S{0:0.0f}'.format(S2))
+
+            # Assign radii of curvature
+
+            cmd('{0:3s} S{1:0.0f} {2:0.12f}'.format(rad_orient, S1, R1))
+            cmd('{0:3s} S{1:0.0f} {2:0.12f}'.format(rad_orient, S2, R2))
+
+            # Set glass type
+
+            if ana_zoom.group_efl[g] > 0:
+                cmd("GLA S{0:0.0f} '{1}'".format(S1, gla_name_pos))
+            else:
+                cmd("GLA S{0:0.0f} '{1}'".format(S1, gla_name_neg))
+
+            # Add group surface labels
+
+            if e == 0:
+                cmd("SLB S{0:0.0f} 'G{1:0.0f}S'".format(S1, g + 1))
+
+            if e == num_group_ele - 1:
+                cmd("SLB S{0:0.0f} 'G{1:0.0f}E'".format(S2, g + 1))
+
+        # Zoom airspaces between groups, except for the BFL
+
+        if g < ana_zoom.num_group - 1:
+
+            # Zoom thickness
+
+            cmd("ZOO THI S'G{0:0.0f}E'".format(g + 1))
+
+            # Loop over zoom positions
+
+            for z in range(ana_zoom.num_zoom):
+
+                # Set airspace
+
+                airspace = ana_zoom.group_z[g, z] - ana_zoom.group_z[g + 1, z]
+
+                cmd("THI S'G{0:0.0f}E' Z{1:0.0f} {2:0.12f}".format(g + 1, z + 1,
+                                                                   airspace))
+
+    # Set BFL
+
+    cmd("THI S'G{0:0.0f}E' {1:0.12f}".format(ana_zoom.num_group,
+                                             ana_zoom.bfl))
+
+    # Add stop surface
+
+    cmd('INS SI-{0:0.0f}'.format(2 * num_group_ele))
+    cmd('STO SI-{0:0.0f}'.format(2 * num_group_ele + 1))
+
+    # Save SEQ file, if desired
+
+    if filename is not None:
+        save_seq(filename)
 
     return
+
+
+def ray_trace():
+
+    """
+
+
+    Checks for ray trace failures at full field for all defined zoom positions
+
+
+    """
+
+    # Loop over zoom positions
+
+    for z in range(1, num_z() + 1):
+
+        # Loop over full fields in X, Y and XY only
+
+        for f in range(1, num_f() + 1):
+
+            # Loop over reference rays
+
+            for r in range(1, 6):
+
+                # Trace ray
+
+                cmd('RSI Z{0:0.0f} F{1:0.0f} R{2:0.0f}'.format(z, f, r))
+
+                # Check for ray error
+
+                if eva('RER'):
+
+                    return False
+
+    return True
+
+
+def opti_ana_zoom():
+
+    """
+
+
+    Optimizes a first order, ray traceable anamorphic zoom solution. Varies only
+    radii of curvature of image defocus.
+
+
+    """
+
+    # Vary radii of curvature
+
+    # Loop over surfaces
+
+    for s in range(1, num_s()):
+
+        # Spherical surface
+
+        if eva('TYP SUR S{0:0.0f}'.format(s), dtype=str) == 'SPH':
+
+            cmd('CCY S{0:0.0f} 0'.format(s))
+
+        # Cylindrical surface
+
+        else:
+
+            cmd('CCY S{0:0.0f} 0'.format(s))
+            cmd('CCX S{0:0.0f} 0'.format(s))
+
+    # Freeze stop surface ROC
+
+    cmd('CCY SS 100')
+
+    # Vary image defocus
+
+    cmd('THC SI 0')
+
+    # Optimize
+
+    opti = 'AUT;'
+
+    # Loop over zoom positions
+
+    for z in range(1, num_z() + 1):
+
+        opti += 'EFY Z{0:0.0f} = {1:0.12f};'\
+                .format(z, eva('EFY Z{0:0.0f}'.format(z), dtype=float))
+        opti += 'EFX Z{0:0.0f} = {1:0.12f};'\
+                .format(z, eva('EFX Z{0:0.0f}'.format(z), dtype=float))
+
+    opti += 'GO'
+
+    cmd(opti)
+
+    return
+
+
+def avg_spot_size():
+
+    """
+
+
+    Calculates the average spot size across all zooms and fields for a ray
+    traceable anamorphic zoom design
+
+
+    """
+
+    # Initialize variables
+
+    spo = np.empty((num_f(), num_z()))
+
+    # Calculate RMS spot size for all zooms and fields
+
+    # Initialize data output array for CODE V defined function, SPOTDATA
+
+    cmd('LCL NUM ^arr(10)')
+
+    # Loop over zoom positions
+
+    for z in range(num_z()):
+
+        # Loop over field positions
+
+        for f in range(num_f()):
+
+            # Get spot size from SPOTDATA
+
+            cmd('^dum == SPOTDATA({0:0.0f}, {1:0.0f}, 1, 0, '
+                                 '"DEF", 0, 0, ^arr)'.format(z + 1, f + 1))
+
+            spo[f, z] = eva('^arr(1)', dtype=float)
+
+    # Return average spot size
+
+    return spo.mean()
+
+
+def avg_group_efl(num_group):
+
+    """
+
+
+    Calculates the average group EFL (absolute value)
+
+
+    num_group:      number of groups (used for surface labels)
+
+    """
+
+    # Initialize variables
+
+    group_efl = []
+
+    # Loop over groups
+
+    for g in range(1, num_group + 1):
+
+        # Handles both spherical and cylindrical cases
+
+        efx = abs(eva("EFX S'G{0:0.0f}S'..'G{0:0.0f}E'".format(g), dtype=float))
+        efy = abs(eva("EFY S'G{0:0.0f}S'..'G{0:0.0f}E'".format(g), dtype=float))
+
+        group_efl.append(min(efx, efy))
+
+    # Return average group EFL (absolute value)
+
+    return np.array(group_efl).mean()
+
+
+def avg_clear_aper():
+
+    """
+
+
+    Calculates the average element clear aperture across all surfaces
+
+
+    """
+
+    # Initialize variables
+
+    ca = np.empty((num_s() - 1, num_z()))
+
+    # Loop over surfaces
+
+    for s in range(num_s() - 1):
+
+        # Loop over zooms
+
+        for z in range(num_z()):
+
+            ca[s, z] = 2 * eva('MAP S{0:0.0f} Z{1:0.0f}'.format(s + 1, z + 1),
+                               dtype=float)
+
+    # Return average element clear aperture
+
+    return ca.mean()
+
+
+def tho():
+
+    # Initialize variables
+
+    tho = np.empty((5, num_z()))
+
+    # Loop over zooms
+
+    for z in range(num_z()):
+
+        # Spherical aberration
+
+        tho[0, z] = eva('SA Z{0:0.0f}'.format(z + 1))
+
+        # Coma
+
+        tho[1, z] = eva('TCO Z{0:0.0f}'.format(z + 1))
+
+        # Astigmatism
+
+        tho[2, z] = eva('TAS Z{0:0.0f}'.format(z + 1))
+        tho[3, z] = eva('SAS Z{0:0.0f}'.format(z + 1))
+
+        # Petzval
+
+        tho[4, z] = eva('PTB Z{0:0.0f}'.format(z + 1))
+
+    return tho
+
 
 # Initialize CODE V session
 
 cv = init_cv()
+cmd('REC NO')  # disabling data recording speeds up COM execution
