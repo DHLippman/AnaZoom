@@ -7,7 +7,6 @@ Date modified:  07/22/20
 """
 
 from designs import AnamorphicZoom, Solutions
-from codev import opti_ana_zoom, avg_spot_size, avg_group_efl, avg_clear_aper
 from utilities import rand_rng, get_time_str, folder_exist, save_obj
 import numpy as np
 from time import time
@@ -72,20 +71,20 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
     for i in range(num_trial):
 
-        # Guess random values for system TTL and BFL
-
-        bfl = rand_rng(config.bfl_rng[0], config.bfl_rng[1], sign=1)
-        ttl = rand_rng(config.ttl_rng[0], config.ttl_rng[1], sign=1)
-        oal = ttl - bfl
-
         # Randomly pick a design form
 
         design_form = design_forms[np.random.randint(0, design_forms.shape[0])]
 
+        # Randomly pick values for system TTL and BFL
+
+        ttl = rand_rng(config.ttl_rng[0], config.ttl_rng[1], sign=1)
+        bfl = rand_rng(config.bfl_rng[0], config.bfl_rng[1], sign=1)
+        oal = ttl - bfl
+
         # Look for solution(s) in X
 
-        # Guess random group focal lengths including for the stationary groups
-        # and x-oriented moving groups
+        # Randomly pick group focal lengths for the stationary groups f1 and f4
+        # and one of the two moving groups f2
 
         f1 = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
                       sign=design_form[0])
@@ -96,7 +95,14 @@ def mc_search_cyl_var(config, num_trial=1e6):
         f4 = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
                       sign=design_form[3])
 
-        # Check for valid four group zoom solution(s)
+        # Attempt to randomly pick a value for the group focal length of the
+        # second moving group f3 while ensuring that a zoom solution will be
+        # found
+
+        #f3_x = rand_f3(config.efx, oal, bfl, f1, f2_x, f4, config.efl_group_rng,
+        #               design_form)
+
+        # Check for valid four group zoom solution(s), if possible
 
         sols_x = check_four_group(config.efx, oal, bfl, f1, f2_x, f3_x, f4,
                                   min_air=min_air)
@@ -105,26 +111,16 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
         for sol_x in sols_x:
 
-            # Look for solution(s) in Y
+            # Look for a compatible Y solution
 
-            # Guess random group focal lengths including for the y-oriented
-            # moving groups only, not the stationary first and fourth groups
-            # which are the same as in the X solution
+            sol_y, \
+            f2_y, \
+            f3_y, = find_y_sol(config, design_form, sol_x, oal, bfl, f1, f4,
+                               min_air, samp=10)
 
-            f2_y = rand_rng(config.efl_group_rng[0],
-                            config.efl_group_rng[1], sign=design_form[1])
-            f3_y = rand_rng(config.efl_group_rng[0],
-                            config.efl_group_rng[1], sign=design_form[2])
+            # Combine X solution and Y solution (if found)
 
-            # Check for valid four group zoom solution(s) taking into
-            # account solution found in X
-
-            sols_y = check_four_group(config.efy, oal, bfl, f1, f2_y, f3_y,
-                                      f4, min_air=min_air, sol_check=sol_x)
-
-            # Loop over solutions in X and Y, if any were found
-
-            for sol_y in sols_y:
+            if sol_y is not None:
 
                 """
                 
@@ -167,21 +163,25 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
                     ana_zoom.optimize()
 
-                    # Calculate average spot size
+                    # Analyze optimized CODE V design for performance,
+                    # aberrations, and packaging
 
-                    ana_zoom.avg_spot_size = avg_spot_size()
+                    ana_zoom.analyze()
 
-                    # Calculate average group efl
+                    # Check that optimization converged
 
-                    ana_zoom.avg_group_efl = avg_group_efl(ana_zoom.num_group)
+                    if ana_zoom.avg_spot_size > 5:  # mm
 
-                    # Calculate average group efl
+                        # If not, ray tracing failed (some rays trace
+                        # successfully but are behaving erratically
 
-                    ana_zoom.avg_clear_aper = avg_clear_aper()
+                        ana_zoom.ray_trace = False
 
-                    # Write design to CODE V sequence file
+                    else:
 
-                    ana_zoom.save_seq(sol_num=sols.num_sol, path=path)
+                        # Write design to CODE V sequence file
+
+                        ana_zoom.save_seq(sol_num=sols.num_sol, path=path)
 
                 # Add design to solutions
 
@@ -209,11 +209,256 @@ def mc_search_cyl_var(config, num_trial=1e6):
                       .format(remain_time))
             print(sols)
 
-    # Save solutions to file
+    # Save solutions to file if any are found
 
-    save_obj(sols, filename=time_str)
+    if sols.num_sol:
+        save_obj(sols, filename=time_str)
+
+    # Delete folder if no ray traceable solutions were found
+
+    if not sols.num_sol_rt:
+        folder_exist(path, erase=True)
 
     return sols
+
+
+def rand_f3(efl, oal, bfl, f1, f2, f4, efl_group_rng, design_form):
+
+    # Initialize variables
+
+    efl_group_rng_signed = efl_group_rng * design_form[2]  # for group 3
+    f3_min = efl_group_rng_signed.min()
+    f3_max = efl_group_rng_signed.max()
+
+    # Calculate quadratic equation coefficients
+
+    s4 = -f4 * bfl / (bfl - f4)
+    L = oal - f1 + s4
+    M = -efl * (oal - L - f1) / (bfl * f1)
+
+    # Calculate maximum allowable value of f3 for which a solution will be found
+
+    term_1 = L ** 2 / 4 - L * f2
+    term_2 = L + f2 * (M - 1) ** 2 / M
+
+    if term_2.min() > 0:
+        if np.min(term_1 / term_2) < f3_max:
+            f3_max = np.min(term_1 / term_2)
+
+    elif term_2.max() < 0:
+        if np.max(term_1 / term_2) > f3_min:
+            f3_min = np.max(term_1 / term_2)
+
+    else:
+        return None
+
+    # Randomly choose an allowable value of f3, if possible
+
+    if f3_min > f3_max:
+        return None
+
+    return rand_rng(f3_min, f3_max, sign=design_form[2])
+
+
+
+def check_six_group(efx, efy, oal, bfl, f1, f2_x, f2_y, f3_x, f3_y, f4,
+                    min_air=0., sol_check=None):
+
+    """
+
+
+    Identifies whether there is a valid solution for a four group zoom design.
+    Checks both positive and negative roots.
+
+    References:
+
+    [1] A. J. Yee, D. J. L. Williams, G. A. Gandara-Montano, P. McCarthy,
+        J. Bentley, and D. T. Moore, “New tools for finding first-order zoom
+        lens solutions and the analysis of zoom lenses during the design
+        process,” San Diego, California, United States, Sep. 2015, p. 958006,
+        doi: 10.1117/12.2186780.
+
+
+
+    efl:            effective focal lengths of zoom solution [mm]
+
+    oal:            overall length of zoom solution [mm]
+
+    bfl:            back focal length of zoom solution [mm]
+
+    f1:             group 1 focal length [mm]
+
+    f2:             group 2 focal length [mm]
+
+    f3:             group 3 focal length [mm]
+
+    f4:             group 4 focal length [mm]
+
+    min_air:        minimum air space between groups; default is 0
+
+    sol_check:      previously found solution to check with for crashes
+
+    """
+
+    # Initialize data structure
+
+    sols = []
+
+    # Calculate quadratic equation coefficients
+
+    s4 = -f4 * bfl / (bfl - f4)
+    L = oal - f1 + s4
+    M_x = -efx * (oal - L - f1) / (bfl * f1)
+    c_x = L * (f2_x + f3_x) + ((M_x - 1) ** 2) * f2_x * f3_x / M_x
+    M_y = -efy * (oal - L - f1) / (bfl * f1)
+    c_y = L * (f2_y + f3_y) + ((M_y - 1) ** 2) * f2_y * f3_y / M_y
+
+    # Check if roots are real for all zoom positions (all values of c) for both
+    # the X and Y slices
+
+    if L ** 2 - 4 * c_x.min() >= 0 and L ** 2 - 4 * c_x.max() >= 0 and \
+       L ** 2 - 4 * c_y.min() >= 0 and L ** 2 - 4 * c_y.max() >= 0:
+
+        # Check positive root in X
+
+        t2_x = (L + np.sqrt(L ** 2 - 4 * c_x)) / 2
+
+        # Calculate zoom motions
+
+        z = calc_zoom_motion(M, L, t2, oal, bfl, f2, s4, efl)
+
+
+
+        # Check if there is a valid solution (no crashes)
+
+        if np.diff(z, axis=0).max() < -min_air:
+
+            # Check other solution, if provided
+
+            if sol_check is not None:
+
+                # Look at zoom motions of moving groups and sort by arbitrary
+                # (first) zoom position
+
+                z_moving = np.concatenate((z[1: -1, :], sol_check[1: -1, :]))
+                z_moving = z_moving[z_moving[:, 0].argsort()[::-1]]
+
+                # Check if there is a valid solution (no crashes)
+
+                if np.diff(z_moving, axis=0).max() < -min_air:
+
+                    # Add solution to array
+
+                    sols.append(z)
+
+            # Add solution to array
+
+            else:
+                sols.append(z)
+
+        # Check negative root
+
+        t2 = (L - np.sqrt(L ** 2 - 4 * c)) / 2
+
+        if t2.min() > 0:
+
+            # Calculate zoom motions
+
+            z = calc_zoom_motion(M, L, t2, oal, bfl, f2, s4, efl)
+
+            # Check if there is a valid solution (no crashes)
+
+            if np.diff(z, axis=0).max() < -min_air:
+
+                # Check other solution, if provided
+
+                if sol_check is not None:
+
+                    # Look at zoom motions of moving groups and sort by arbitrary
+                    # (first) zoom position
+
+                    z_moving = np.concatenate((z[1: -1, :],
+                                               sol_check[1: -1, :]))
+                    z_moving = z_moving[z_moving[:, 0].argsort()[::-1]]
+
+                    # Check if there is a valid solution (no crashes)
+
+                    if np.diff(z_moving, axis=0).max() < -min_air:
+
+                        # Add solution to array
+
+                        sols.append(z)
+
+                # Add solution to array
+
+                else:
+                    sols.append(z)
+
+    return sols
+
+
+def calc_zoom_motion(efx, efy, oal, bfl, M_x, M_y, t2_x, t2_y, f2_x, f2_y, L,
+                     s4):
+
+    """
+
+
+    Finds the zoom motions for a four group zoom.
+
+    References:
+
+    [1] A. J. Yee, D. J. L. Williams, G. A. Gandara-Montano, P. McCarthy,
+        J. Bentley, and D. T. Moore, “New tools for finding first-order zoom
+        lens solutions and the analysis of zoom lenses during the design
+        process,” San Diego, California, United States, Sep. 2015, p. 958006,
+        doi: 10.1117/12.2186780.
+
+
+    M:              M quadratic coefficient
+
+    L:              L quadratic coefficient
+
+    t2:             air space between groups 2 and 3 [mm]
+
+    oal:            overall length of zoom solution [mm]
+
+    bfl:            back focal length of zoom solution [mm]
+
+    f2:             group 2 focal length [mm]
+
+    s4:             front focal distance of group 4 [mm]
+
+    efl:            effective focal lengths of zoom solution [mm]
+
+    """
+
+    # Calculate air spaces in X slice
+
+    s2_x = ((M_x - 1) * t2_x + L) / ((M_x - 1) - M_x * t2_x / f2_x)
+    t1_x = oal - L + s4 - s2_x
+    t3_x = oal - t1_x - t2_x
+
+    # Calculate air spaces in Y slice
+
+    s2_y = ((M_y - 1) * t2_y + L) / ((M_y - 1) - M_y * t2_y / f2_y)
+    t1_y = oal - L + s4 - s2_y
+    t3_y = oal - t1_y - t2_y
+
+    # Calculate group zoom motions
+
+    z = np.ones((6, efx.size)) * bfl
+    z[4, :] += t3_x
+    z[3, :] += t3_y
+    z[2, :] = t2_x + z[4, :]
+    z[1, :] = t2_y + z[3, :]
+    z[0, :] += oal
+
+    # Sort moving group ordering based on arbitrary (first) zoom position
+
+    z_moving = z[1: -1, :]
+    z[1: -1, :] = z_moving[z_moving[:, 0].argsort()[::-1]]
+
+    return z
 
 
 def check_four_group(efl, oal, bfl, f1, f2, f3, f4, min_air=0., sol_check=None):
@@ -231,6 +476,7 @@ def check_four_group(efl, oal, bfl, f1, f2, f3, f4, min_air=0., sol_check=None):
         lens solutions and the analysis of zoom lenses during the design
         process,” San Diego, California, United States, Sep. 2015, p. 958006,
         doi: 10.1117/12.2186780.
+
 
 
     efl:            effective focal lengths of zoom solution [mm]
@@ -341,12 +587,10 @@ def check_four_group(efl, oal, bfl, f1, f2, f3, f4, min_air=0., sol_check=None):
                 else:
                     sols.append(z)
 
-
-
     return sols
 
 
-def calc_zoom_motion(M, L, t2, oal, bfl, f2, s4, efl):
+def calc_zoom_motion_old(M, L, t2, oal, bfl, f2, s4, efl):
 
     """
 
@@ -394,6 +638,75 @@ def calc_zoom_motion(M, L, t2, oal, bfl, f2, s4, efl):
     z[0, :] = t1 + z[1, :]
 
     return z
+
+
+def find_y_sol(config, design_form, sol_x, oal, bfl, f1, f4, min_air,
+               samp=10):
+
+    """
+
+
+    Finds Y solutions that are compatible with a given X solution.
+
+    Routine has the potential to find multiple compatible Y solutions for the
+    given X solution, but in order to not introduce bias (multiple full
+    solutions with the same X group focal lengths but different Y ones) only the
+    first found solution is accepted. For the same reason, the ordering of the
+    potential f2, f3 solutions are shuffled
+
+
+    Increases the likelihood of finding a compatible Y solution by approximately
+    10 x
+
+    """
+
+    # Find group EFL bounds to randomly check between
+
+    bounds = np.linspace(config.efl_group_rng.min(),
+                         config.efl_group_rng.max(), samp + 1)
+
+    # Determine random f2, f3 values to check
+
+    f2_check = np.empty(samp)
+    f3_check = np.empty(samp)
+
+    for i in range(samp):
+        f2_check[i] = rand_rng(bounds[i], bounds[i + 1], sign=design_form[1])
+        f3_check[i] = rand_rng(bounds[i], bounds[i + 1], sign=design_form[2])
+
+    # Flatten a mesh into a 2 column array with f2 and f3 group focal lengths
+
+    f2_mesh, f3_mesh = np.meshgrid(f2_check, f3_check)
+
+    f_search = np.hstack((np.reshape(f2_mesh, (samp ** 2, 1)),
+                          np.reshape(f3_mesh, (samp ** 2, 1))))
+
+    # Randomly shuffle group focal lengths to search over
+
+    np.random.shuffle(f_search)
+
+    # Loop over randomly-ordered f2, f3 combinations looking for a compatible
+    # solution
+
+    for f2_y, f3_y in f_search:
+
+        # Check for valid four group zoom solution(s) taking into
+        # account solution found in X
+
+        sols_y = check_four_group(config.efy, oal, bfl, f1, f2_y, f3_y,
+                                  f4, min_air=min_air, sol_check=sol_x)
+
+        # Valid solution(s) found
+
+        for sol_y in sols_y:
+
+            # Return the first of potential two solutions (for +/- roots)
+
+            return sol_y, f2_y, f3_y
+
+    # If no solution is found, return None instead
+
+    return None, None, None
 
 
 def combine_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x, f3_y, f4):

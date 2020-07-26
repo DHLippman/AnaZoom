@@ -6,7 +6,8 @@ Date modified:  07/22/20
 
 """
 
-from codev import create_ana_zoom, ray_trace, opti_ana_zoom, save_seq
+from codev import create_ana_zoom, ray_trace, opti_ana_zoom, avg_spot_size, \
+    avg_group_efl, avg_clear_aper, tho, save_seq
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
@@ -254,22 +255,19 @@ class AnamorphicZoom:
         self.config = config
         self.group_efl = group_efl
         self.group_type = group_type
-        self.group_z = group_z
+        self.group_z_og = group_z
         self.num_zoom = num_zoom
-        self.avg_spot_size = 0
-        self.avg_group_efl = 0
-        self.avg_clear_aper = 0
 
         if self.num_zoom > self.config.num_zoom:
             self.num_zoom = self.config.num_zoom
             print('WARNING: too few zoom positions for design')
 
-        # Calculate basic values
+        # Evaluation parameters
 
-        self.num_group = self.group_efl.size
-        self.ttl = self.group_z[0, 0]
-        self.bfl = self.group_z[-1, 0]
-        self.oal = self.ttl - self.bfl
+        self.avg_spot_size = 0
+        self.avg_group_efl = 0
+        self.avg_clear_aper = 0
+        self.tho = np.empty((5, self.num_zoom))
 
         # Calculate even spacing indices for number of design zoom positions
 
@@ -282,7 +280,14 @@ class AnamorphicZoom:
 
         # Calculate zoom positions motion
 
-        self.group_z = self.group_z[:, self.ind]
+        self.group_z = self.group_z_og[:, self.ind]
+
+        # Calculate basic values
+
+        self.num_group = self.group_efl.size
+        self.ttl = self.group_z[0, 0]
+        self.bfl = self.group_z[-1, 0]
+        self.oal = self.ttl - self.bfl
 
         # Classify solution type
 
@@ -296,7 +301,7 @@ class AnamorphicZoom:
         repr_str += 'Variator type:\t\t\t{0}\n'\
                     .format(self.vari_str.capitalize())
         repr_str += 'Solution type:\t\t\t{0}\n'.format(self.sol_type)
-        repr_str += 'Cyl. orient.:\t\t\t{0}\n\n'.format(self.orient_str)
+        repr_str += 'Cyl. orient.:\t\t\t{0}\n\n'.format(self.orient_type)
 
         repr_str += 'Groups:\n\n'
 
@@ -333,21 +338,13 @@ class AnamorphicZoom:
 
     def classify(self):
 
-        # Classify power
+        """
 
-        self.sol_type = ''
 
-        for i in [0, 1, 3, -1]:
-            if self.group_efl[i] > 0:
-                self.sol_type += 'P'
-            else:
-                self.sol_type += 'N'
+        Classifies the solution type
 
-        # Classify cylinder orientation
 
-        self.orient_str = ''
-        for char in self.group_type[self.group_type != 'XY']:
-            self.orient_str += char
+        """
 
         # Classify variator type
 
@@ -355,6 +352,30 @@ class AnamorphicZoom:
             self.vari_str = 'spherical'
         elif self.num_group == 6:
             self.vari_str = 'cylindrical'
+
+        # Classify solution and orientation types
+
+        self.sol_type = ''
+        self.orient_type = ''
+
+        # Loop over groups
+
+        for g in range(self.num_group):
+
+            # Classify power
+
+            if 'X' in self.group_type[g]:
+
+                if self.group_efl[g] > 0:
+                    self.sol_type += 'P'
+                else:
+                    self.sol_type += 'N'
+
+            # Classify cylinder orientation
+
+            if self.group_type[g] != 'XY':
+
+                self.orient_type += self.group_type[g]
 
     def make_codev(self, save_seq=None):
 
@@ -369,18 +390,6 @@ class AnamorphicZoom:
         """
 
         create_ana_zoom(self, save_seq)
-
-    def optimize(self):
-
-        """
-
-
-        Optimizes an anamorphic zoom design in CODE V
-
-
-        """
-
-        opti_ana_zoom()
 
     def check_ray_trace(self):
 
@@ -397,6 +406,44 @@ class AnamorphicZoom:
         self.ray_trace = ray_trace()
 
         return self.ray_trace
+
+    def optimize(self):
+
+        """
+
+
+        Optimizes an anamorphic zoom design in CODE V
+
+
+        """
+
+        opti_ana_zoom()
+
+    def analyze(self):
+
+        """
+
+
+        Analyze CODE V designs for performance, aberrations, and packaging
+
+
+        """
+
+        # Calculate average spot size
+
+        self.avg_spot_size = avg_spot_size()
+
+        # Calculate average group efl
+
+        self.avg_group_efl = avg_group_efl(self.num_group)
+
+        # Calculate average group efl
+
+        self.avg_clear_aper = avg_clear_aper()
+
+        # Calculate third order aberration values
+
+        self.tho = tho()
 
     def save_seq(self, sol_num, path=None, out=False):
 
@@ -417,7 +464,7 @@ class AnamorphicZoom:
 
         # Create filename if not provided
 
-        filename = '{0}_{1}_sol{2}.seq'.format(self.sol_type, self.orient_str,
+        filename = '{0}_{1}_sol{2}.seq'.format(self.sol_type, self.orient_type,
                                                sol_num)
 
         # Create full path
@@ -434,6 +481,14 @@ class AnamorphicZoom:
             print('Solution saved:\t{0}'.format(path))
 
     def plot_zoom(self):
+
+        """
+
+
+        Plot zoom motion of design
+
+
+        """
 
         # Initialize plot variables
 
@@ -482,14 +537,14 @@ class AnamorphicZoom:
 
             # Plot zoom motion
 
-            ax.plot(self.group_z[i, :], self.config.efx, color=clrs[i],
+            ax.plot(self.group_z_og[i, :], self.config.efx, color=clrs[i],
                     linestyle=lstyles[i], label=leg_str)
 
-            ax_par.plot(self.group_z[i, :], self.config.efy, color='none')
+            ax_par.plot(self.group_z_og[i, :], self.config.efy, color='none')
 
         # Set plot settings
 
-        ax.set(title=self.sol_type + '  /  ' + self.orient_str,
+        ax.set(title=self.sol_type + '  /  ' + self.orient_type,
                xlabel="z [mm]",
                ylabel="EFX [mm]")
         ax_par.set(ylabel="EFY [mm]")
@@ -534,7 +589,6 @@ class Solutions:
 
         self.sols = []
         self.sols_rt = []
-        self.sols_rt_spo = []
 
         self.num_sol = 0
         self.num_sol_rt = 0
@@ -632,4 +686,121 @@ class Solutions:
             self.sols_rt.append(sol)
             self.num_sol_rt += 1
             self.sol_type_rt[sol.sol_type] += 1
-            self.sols_rt_spo.append(sol.avg_spot_size)
+
+    def get_sol(self, sol_ind):
+
+        """
+
+
+        Gets a solutions based on solution index
+
+
+        """
+
+        return self.sols[sol_ind]
+
+    def demograph(self):
+
+        # Initialize data structures
+
+        sol_type = []
+        sol_type_rt = []
+        ray_trace = {}
+        avg_spot_size = {}
+        avg_group_efl = {}
+        avg_clear_aper = {}
+        SA = {}
+        TCO = {}
+        TAS = {}
+        SAS = {}
+        PTB = {}
+
+        # Determine ray traceability likelihood for found first order solutions
+
+        for sol in self.sols:
+
+            # Check to see if this solution type has been initialized yet
+
+            if sol.sol_type not in sol_type:
+
+                sol_type.append(sol.sol_type)
+                ray_trace[sol.sol_type] = np.zeros(2, dtype=int)
+
+            # Check whether solution ray traces
+
+            if sol.ray_trace:
+                ray_trace[sol.sol_type][0] += 1
+            else:
+                ray_trace[sol.sol_type][1] += 1
+
+        # Calculate ray traceability liklihood
+
+        for s_type in sol_type:
+            ray_trace[s_type] = 100 * ray_trace[s_type][0] / \
+                                      ray_trace[s_type].sum()
+
+        # Loop over ray traceable solutions
+
+        for sol in self.sols_rt:
+
+            # Check to see if this solution type has been initialized yet
+
+            if sol.sol_type not in sol_type_rt:
+
+                # Add evaluation parameters to dictionary by initializing list
+
+                sol_type_rt.append(sol.sol_type)
+                avg_spot_size[sol.sol_type] = [sol.avg_spot_size]
+                avg_group_efl[sol.sol_type] = [sol.avg_group_efl]
+                avg_clear_aper[sol.sol_type] = [sol.avg_clear_aper]
+                SA[sol.sol_type] = [sol.tho[0, :].mean()]
+                TCO[sol.sol_type] = [sol.tho[1, :].mean()]
+                TAS[sol.sol_type] = [sol.tho[2, :].mean()]
+                SAS[sol.sol_type] = [sol.tho[3, :].mean()]
+                PTB[sol.sol_type] = [sol.tho[4, :].mean()]
+
+            else:
+
+                # Add evaluation parameters to dictionary by appending to list
+
+                avg_spot_size[sol.sol_type].append(sol.avg_spot_size)
+                avg_group_efl[sol.sol_type].append(sol.avg_group_efl)
+                avg_clear_aper[sol.sol_type].append(sol.avg_clear_aper)
+                SA[sol.sol_type].append(sol.tho[0, :].mean())
+                TCO[sol.sol_type].append(sol.tho[1, :].mean())
+                TAS[sol.sol_type].append(sol.tho[2, :].mean())
+                SAS[sol.sol_type].append(sol.tho[3, :].mean())
+                PTB[sol.sol_type].append(sol.tho[4, :].mean())
+
+        # Plot ray traceability by solution type
+
+        fig, ax = plt.subplots()
+
+        ax.bar(ray_trace.keys(), ray_trace.values())
+        ax.set(xlabel='Solution type', ylabel='Ray traceability likelihood [%]')
+
+        # Plot average spot size and average group EFL by ray traceable solution
+        # type
+
+        fig, ax = plt.subplots()
+
+        for s_type in sol_type_rt:
+            ax.scatter(avg_spot_size[s_type], avg_group_efl[s_type], s=5,
+                       label=s_type)
+            ax.set(xlabel='Average spot size [mm]',
+                   ylabel='Average group EFL [mm]')
+            ax.set_xlim(0, 5)
+            ax.legend()
+
+        """
+        
+        Others:
+        
+        - cylinder orientation
+        - aberration breakdown
+        
+        """
+
+
+
+        return

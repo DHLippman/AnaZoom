@@ -24,18 +24,12 @@ def rand_rng(min_val, max_val, sign=1):
 
     max_val:        maximum value of range (absolute value)
 
-    sign:           the sign of the random value;
+    sign:           the sign of the random value
 
                     1 for positive
                    -1 for negative
-                    0 for random
 
     """
-
-    if sign == 0 and np.random.random() > 0.5:
-        sign = 1
-    elif sign == 0:
-        sign = -1
 
     return sign * np.random.uniform(np.abs(min_val), np.abs(max_val))
 
@@ -194,10 +188,12 @@ def folder_exist(path, erase=False):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    # Delete contents of folder, if desired
+    # Delete folder and contents, if desired
 
     if erase:
         for file in os.listdir(path):
             filePath = os.path.join(path, file)
             if os.path.isfile(filePath):
                 os.unlink(filePath)
+        os.rmdir(path)
+

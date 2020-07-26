@@ -1006,8 +1006,6 @@ def opti_ana_zoom():
 
     cmd(opti)
 
-    save_seq('dummy_2')
-
     return
 
 
@@ -1112,6 +1110,36 @@ def avg_clear_aper():
     # Return average element clear aperture
 
     return ca.mean()
+
+
+def tho():
+
+    # Initialize variables
+
+    tho = np.empty((5, num_z()))
+
+    # Loop over zooms
+
+    for z in range(num_z()):
+
+        # Spherical aberration
+
+        tho[0, z] = eva('SA Z{0:0.0f}'.format(z + 1))
+
+        # Coma
+
+        tho[1, z] = eva('TCO Z{0:0.0f}'.format(z + 1))
+
+        # Astigmatism
+
+        tho[2, z] = eva('TAS Z{0:0.0f}'.format(z + 1))
+        tho[3, z] = eva('SAS Z{0:0.0f}'.format(z + 1))
+
+        # Petzval
+
+        tho[4, z] = eva('PTB Z{0:0.0f}'.format(z + 1))
+
+    return tho
 
 
 # Initialize CODE V session

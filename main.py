@@ -6,14 +6,22 @@ Date modified:  07/20/20
 
 """
 
-from designs import SystemConfig
+from designs import SystemConfig, AnamorphicZoom, Solutions
 from monte_carlo import mc_search_cyl_var
-from utilities import load_obj
+from utilities import load_obj, save_obj, folder_exist
 import numpy as np
 import matplotlib.pyplot as plt
+from time import time
 
 
 def main():
+
+    #sols = load_obj('1e8_cyl_var')
+    #sols.demograph()
+    #
+    #return
+
+    start = time()
 
     # Set system values
 
@@ -26,6 +34,12 @@ def main():
     sols = mc_search_cyl_var(config, num_trial=1e8)
 
     print(sols)
+
+    stop = time()
+
+    print('Duration: {0:0.4}f'.format((start - stop) / 3600))
+
+
 
     return
 
