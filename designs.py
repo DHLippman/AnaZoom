@@ -25,7 +25,7 @@ class SystemConfig:
 
     def __init__(self, ana_rat=2., efl_sys_rng=np.array([28., 76.]),
                  bfl_rng=np.array([35., 65.]), ttl_rng=np.array([240., 365.]),
-                 efl_group_rng=np.array([20., 500.]), num_zoom=45, fno=4.,
+                 efl_group_rng=np.array([20., 500.]), num_zoom=25, fno=4.,
                  img_dim=np.array([22.31, 18.67]),
                  wl=np.array([656.2725, 587.5618, 486.1327]), wl_ref=1):
 
@@ -226,7 +226,7 @@ class AnamorphicZoom:
 
     """
 
-    def __init__(self, config, group_efl, group_type, group_z, num_zoom=5):
+    def __init__(self, config, sol, num_zoom=5):
 
         """
 
@@ -253,9 +253,9 @@ class AnamorphicZoom:
         # Initialize variables
 
         self.config = config
-        self.group_efl = group_efl
-        self.group_type = group_type
-        self.group_z_og = group_z
+        self.group_z_og = sol[0]
+        self.group_efl = sol[1]
+        self.group_type = sol[2]
         self.num_zoom = num_zoom
 
         if self.num_zoom > self.config.num_zoom:

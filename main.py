@@ -32,12 +32,13 @@ def main():
     # Perform Monte Carlo search for cylindrical variator solutions
 
     sols = mc_search_cyl_var(config, num_trial=1e8)
-
     print(sols)
+
+    # print(sols)
 
     stop = time()
 
-    print('Duration: {0:0.4}f'.format((start - stop) / 3600))
+    print('Duration: {0:0.4f} hrs'.format((stop - start) / 3600))
 
 
 
