@@ -16,13 +16,6 @@ from time import time
 
 def main():
 
-    #sols = load_obj('1e8_cyl_var')
-    #sols.demograph()
-    #
-    #return
-
-    start = time()
-
     # Set system values
 
     config = SystemConfig(bfl_rng=np.array([35., 65.]),
@@ -31,16 +24,8 @@ def main():
 
     # Perform Monte Carlo search for cylindrical variator solutions
 
-    sols = mc_search_cyl_var(config, num_trial=1e8)
+    sols = mc_search_cyl_var(config, num_trial=1e5)
     print(sols)
-
-    # print(sols)
-
-    stop = time()
-
-    print('Duration: {0:0.4f} hrs'.format((stop - start) / 3600))
-
-
 
     return
 

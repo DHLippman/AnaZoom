@@ -7,7 +7,8 @@ Date modified:  07/22/20
 """
 
 from designs import AnamorphicZoom, Solutions
-from utilities import rand_rng, get_time_str, folder_exist, save_obj
+from utilities import rand_rng, get_time_str, folder_exist, format_time_str, \
+    save_obj
 import numpy as np
 from time import time
 import sys
@@ -172,24 +173,20 @@ def mc_search_cyl_var(config, num_trial=1e6):
         if i + 1 in progress:
 
             perc = (np.asscalar(np.argwhere(i + 1 == progress)) + 1) / num_prog
+
             cur_time = time()
             pass_time = cur_time - start_time
             full_time = pass_time / perc
             remain_time = full_time - pass_time
+
             print('{0:0.0f}% complete\n'.format(perc * 100))
-            if remain_time > 3600 * 24:
-                print('Approximately {0:0.2f} days remaining'
-                      .format(remain_time / 3600 / 24))
-            elif remain_time > 3600:
-                print('Approximately {0:0.2f} hours remaining'
-                      .format(remain_time / 3600))
-            elif remain_time > 60:
-                print('Approximately {0:0.2f} minutes remaining'
-                      .format(remain_time / 60))
-            elif remain_time > 0:
-                print('Approximately {0:0.2f} seconds remaining'
-                      .format(remain_time))
+            print('Approximately {0} remaining'
+                  .format(format_time_str(remain_time)))
             print(sols)
+
+    # Close out solution timer
+
+    sols.stopwatch(end=True)
 
     # Save solutions to file if any are found
 
