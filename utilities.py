@@ -197,3 +197,26 @@ def folder_exist(path, erase=False):
                 os.unlink(filePath)
         os.rmdir(path)
 
+
+def format_time_str(t):
+
+    """
+
+
+    Returns a time string formatted for the most appropriate unit
+
+
+    t:      time in seconds
+
+    """
+
+    # Determine best time unit
+
+    if t > 3600 * 24:
+        return '{0:0.2f} days'.format(t / 3600 / 24)
+    elif t > 3600:
+        return '{0:0.2f} hours'.format(t / 3600)
+    elif t > 60:
+        return '{0:0.2f} minutes'.format(t / 60)
+    else:
+        return '{0:0.2f} seconds'.format(t)

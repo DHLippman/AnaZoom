@@ -8,7 +8,9 @@ Date modified:  07/22/20
 
 from codev import create_ana_zoom, ray_trace, opti_ana_zoom, avg_spot_size, \
     avg_group_efl, avg_clear_aper, tho, save_seq
+from utilities import format_time_str
 import numpy as np
+from time import time
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 
@@ -297,6 +299,11 @@ class AnamorphicZoom:
 
         repr_str = '\n' + 10 * '~' + ' ANAMORPHIC ZOOM DESIGN ' + 10 * '~' + \
                    '\n\n'
+
+        repr_str += 'EFX:\t\t\t\t\t[{0:0.1f}, {1:0.1f}] mm\n' \
+                    .format(self.efx[0], self.efx[-1])
+        repr_str += 'EFY:\t\t\t\t\t[{0:0.1f}, {1:0.1f}] mm\n\n' \
+                    .format(self.efy[0], self.efy[-1])
 
         repr_str += 'Variator type:\t\t\t{0}\n'\
                     .format(self.vari_str.capitalize())
@@ -626,7 +633,18 @@ class Solutions:
                             'NNNP': 0,
                             'NNNN': 0}
 
+        # Start stopwatch
+
+        self.start_time = time()
+        self.stop_time = self.start_time
+        self.comp_time = self.stop_time - self.start_time
+        self.sw_status = True
+
     def __repr__(self):
+
+        # Update stop watch, if still active
+
+        self.stopwatch()
 
         # Header
 
@@ -656,6 +674,12 @@ class Solutions:
 
         else:
             repr_str += 'No solutions found\n'
+
+
+        # Print computation time
+
+        repr_str += '\nComputation time:\t\t{0}\n'\
+                    .format(format_time_str(self.comp_time))
 
         repr_str += '\n' + (2 * 10 + 27) * '~' + '\n\n'
 
@@ -801,6 +825,23 @@ class Solutions:
         
         """
 
-
-
         return
+
+    def stopwatch(self, end=False):
+
+        """
+
+
+        Updates the stopwatch on the execution duration
+
+
+        """
+
+        # Update computation time
+
+        if self.sw_status:
+            self.stop_time = time()
+            self.comp_time = self.stop_time - self.start_time
+
+        if end:
+            self.sw_status = True
