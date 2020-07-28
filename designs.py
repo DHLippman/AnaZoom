@@ -307,7 +307,7 @@ class AnamorphicZoom:
 
         repr_str += 'Variator type:\t\t\t{0}\n'\
                     .format(self.vari_str.capitalize())
-        repr_str += 'Solution type:\t\t\t{0}\n'.format(self.sol_type)
+        repr_str += 'Solution type:\t\t\t{0}\n'.format(self.power_type)
         repr_str += 'Cyl. orient.:\t\t\t{0}\n\n'.format(self.orient_type)
 
         repr_str += 'Groups:\n\n'
@@ -362,27 +362,63 @@ class AnamorphicZoom:
 
         # Classify solution and orientation types
 
-        self.sol_type = ''
+        self.power_type = ''
+        self.sol_type_x = ''
+        self.sol_type_y = ''
         self.orient_type = ''
 
         # Loop over groups
 
         for g in range(self.num_group):
 
-            # Classify power
+            # Determine group type
 
-            if 'X' in self.group_type[g]:
+            if self.group_type[g] == 'XY':
+
+                # Classify power
 
                 if self.group_efl[g] > 0:
-                    self.sol_type += 'P'
+                    self.power_type += 'P'
+                    self.sol_type_x += 'P'
+                    self.sol_type_y += 'P'
                 else:
-                    self.sol_type += 'N'
+                    self.power_type += 'N'
+                    self.sol_type_x += 'N'
+                    self.sol_type_y += 'N'
 
-            # Classify cylinder orientation
+            elif self.group_type[g] == 'X':
 
-            if self.group_type[g] != 'XY':
+                # Classify power
+
+                if self.group_efl[g] > 0:
+                    self.power_type += 'P'
+                    self.sol_type_x += 'P'
+                else:
+                    self.power_type += 'N'
+                    self.sol_type_x += 'N'
+
+                # Classify cylinder orientation
 
                 self.orient_type += self.group_type[g]
+
+            elif self.group_type[g] == 'Y':
+
+                # Classify power
+
+                if self.group_efl[g] > 0:
+                    self.power_type += 'P'
+                    self.sol_type_y += 'P'
+                else:
+                    self.power_type += 'N'
+                    self.sol_type_y += 'N'
+
+                # Classify cylinder orientation
+
+                self.orient_type += self.group_type[g]
+
+        # Create full solution type string
+
+        self.sol_type = self.power_type + '_' + self.orient_type
 
     def make_codev(self, save_seq=None):
 
@@ -471,8 +507,7 @@ class AnamorphicZoom:
 
         # Create filename if not provided
 
-        filename = '{0}_{1}_sol{2}.seq'.format(self.sol_type, self.orient_type,
-                                               sol_num)
+        filename = '{0}_sol{1}.seq'.format(self.sol_type, sol_num)
 
         # Create full path
 
@@ -551,7 +586,7 @@ class AnamorphicZoom:
 
         # Set plot settings
 
-        ax.set(title=self.sol_type + '  /  ' + self.orient_type,
+        ax.set(title=self.sol_type,
                xlabel="z [mm]",
                ylabel="EFX [mm]")
         ax_par.set(ylabel="EFY [mm]")
@@ -600,38 +635,38 @@ class Solutions:
         self.num_sol = 0
         self.num_sol_rt = 0
 
-        self.sol_type = {'PPPP': 0,
-                         'PPPN': 0,
-                         'PPNP': 0,
-                         'PPNN': 0,
-                         'PNPP': 0,
-                         'PNPN': 0,
-                         'PNNP': 0,
-                         'PNNN': 0,
-                         'NPPP': 0,
-                         'NPPN': 0,
-                         'NPNP': 0,
-                         'NPNN': 0,
-                         'NNPP': 0,
-                         'NNPN': 0,
-                         'NNNP': 0,
-                         'NNNN': 0}
-        self.sol_type_rt = {'PPPP': 0,
-                            'PPPN': 0,
-                            'PPNP': 0,
-                            'PPNN': 0,
-                            'PNPP': 0,
-                            'PNPN': 0,
-                            'PNNP': 0,
-                            'PNNN': 0,
-                            'NPPP': 0,
-                            'NPPN': 0,
-                            'NPNP': 0,
-                            'NPNN': 0,
-                            'NNPP': 0,
-                            'NNPN': 0,
-                            'NNNP': 0,
-                            'NNNN': 0}
+        # Create empty dictionary of all possible solutions
+
+        self.sol_type = {}
+        self.sol_type_rt = {}
+        xy = 'XY'
+
+        for c1 in ['P', 'N']:
+
+            for c2 in ['P', 'N']:
+
+                for c3 in ['P', 'N']:
+
+                    for c4 in ['P', 'N']:
+
+                        for c5 in ['P', 'N']:
+
+                            for c6 in ['P', 'N']:
+
+                                for c7 in ['X', 'Y']:
+
+                                    for c8 in ['X', 'Y']:
+
+                                        for c9 in ['X', 'Y']:
+
+                                            for c10 in ['X', 'Y']:
+
+                                                key = c1 + c2 + c3 + c4 + c5 + \
+                                                      c6 + '_' + c7 + c8 + \
+                                                      c9 + c10
+
+                                                self.sol_type[key] = 0
+                                                self.sol_type_rt[key] = 0
 
         # Start stopwatch
 
@@ -656,7 +691,7 @@ class Solutions:
         if self.num_sol:
             repr_str += 'First order solutions:\t{0:0.0f}\n\n'\
                         .format(self.num_sol)
-            template = '{0:>8s}{1:>8.0f}\n'
+            template = '{0:>12s}{1:>8.0f}\n'
             for key in self.sol_type:
                 if self.sol_type[key]:
                     repr_str += template.format(key, self.sol_type[key])
@@ -843,5 +878,10 @@ class Solutions:
             self.stop_time = time()
             self.comp_time = self.stop_time - self.start_time
 
+        # Stop stopwatch
+
         if end:
-            self.sw_status = True
+            self.sw_status = False
+
+        return self.comp_time
+

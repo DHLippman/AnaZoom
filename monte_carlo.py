@@ -15,7 +15,7 @@ import sys
 import matplotlib.pyplot as plt
 
 
-def mc_search_cyl_var(config, num_trial=1e6):
+def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
 
     """
 
@@ -33,23 +33,6 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
     num_trial = int(num_trial)
     min_air = 0
-
-    design_forms = np.array([[ 1,  1,  1,  1],
-                             [ 1,  1,  1, -1],
-                             [ 1,  1, -1,  1],
-                             [ 1,  1, -1, -1],
-                             [ 1, -1,  1,  1],
-                             [ 1, -1,  1, -1],
-                             [ 1, -1, -1,  1],
-                             [ 1, -1, -1, -1],
-                             [-1,  1,  1,  1],
-                             [-1,  1,  1, -1],
-                             [-1,  1, -1,  1],
-                             [-1,  1, -1, -1],
-                             [-1, -1,  1,  1],
-                             [-1, -1,  1, -1],
-                             [-1, -1, -1,  1],
-                             [-1, -1, -1, -1]])
 
     # Create solutions object
 
@@ -75,15 +58,19 @@ def mc_search_cyl_var(config, num_trial=1e6):
 
     for i in range(num_trial):
 
-        # Randomly pick a design form
-
-        design_form = design_forms[np.random.randint(0, design_forms.shape[0])]
-
         # Randomly pick values for system TTL and BFL
 
         ttl = rand_rng(config.ttl_rng[0], config.ttl_rng[1], sign=1)
         bfl = rand_rng(config.bfl_rng[0], config.bfl_rng[1], sign=1)
         oal = ttl - bfl
+
+        # Randomly pick a design form based on whether X and Y have the same
+        # solution type
+
+        design_form = 2 * np.random.randint(0, 2, size=(6,)) - 1
+        if same_xy:
+            design_form[2] = design_form[1]
+            design_form[4] = design_form[3]
 
         # Randomly pick group focal lengths
 
@@ -93,15 +80,15 @@ def mc_search_cyl_var(config, num_trial=1e6):
         f2_x = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
                         sign=design_form[1])
         f2_y = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
-                        sign=design_form[1])
+                        sign=design_form[2])
 
         f3_x = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
-                        sign=design_form[2])
+                        sign=design_form[3])
         f3_y = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
-                        sign=design_form[2])
+                        sign=design_form[4])
 
         f4 = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
-                      sign=design_form[3])
+                      sign=design_form[5])
 
         # Check for valid six group zoom solution(s)
 
