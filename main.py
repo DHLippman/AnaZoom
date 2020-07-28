@@ -24,10 +24,14 @@ def main():
 
     # Perform Monte Carlo search for cylindrical variator solutions
 
-    sols = mc_search_cyl_var(config, num_trial=1e5)
+    sols = mc_search_cyl_var(config, num_trial=1e6, same_xy=False)
+
     print(sols)
 
     return
+
+
+
 
 
 if __name__ == '__main__':
