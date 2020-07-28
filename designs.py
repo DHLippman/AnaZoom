@@ -2,7 +2,7 @@
 Author:         David Henry Lippman
 File:           designs.py
 Date created:   07/22/20
-Date modified:  07/22/20
+Date modified:  07/28/20
 
 """
 
@@ -11,6 +11,7 @@ from codev import create_ana_zoom, ray_trace, opti_ana_zoom, avg_spot_size, \
 from utilities import format_time_str
 import numpy as np
 from time import time
+import sys
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 
@@ -266,6 +267,7 @@ class AnamorphicZoom:
 
         # Evaluation parameters
 
+        self.ray_trace = 0
         self.avg_spot_size = 0
         self.avg_group_efl = 0
         self.avg_clear_aper = 0
@@ -313,19 +315,18 @@ class AnamorphicZoom:
         repr_str += 'Groups:\n\n'
 
         template = '{0:>4.0f}{1:>8s}{2:>8s}{3:>14.4f} mm\n'
-        for i in range(self.num_group):
+        for g in range(self.num_group):
 
-            group = np.ceil(i / 2).astype(int) + 1
             surf_type = 'CYL'
-            if self.group_type[i] == 'XY':
+            if self.group_type[g] == 'XY':
                 surf_type = 'SPH'
 
             surf_orient = '-'
             if surf_type == 'CYL':
-                surf_orient = self.group_type[i]
+                surf_orient = self.group_type[g]
 
-            repr_str += template.format(group, surf_type, surf_orient,
-                                        self.group_efl[i])
+            repr_str += template.format(g + 1, surf_type, surf_orient,
+                                        self.group_efl[g])
 
         repr_str += '\n'
 
@@ -615,7 +616,7 @@ class Solutions:
 
     """
 
-    def __init__(self, config, num_trial):
+    def __init__(self, config, num_trial, var_type='CYL'):
 
         """
 
@@ -635,38 +636,65 @@ class Solutions:
         self.num_sol = 0
         self.num_sol_rt = 0
 
-        # Create empty dictionary of all possible solutions
+        # Create empty dictionary of all possible solutions based on variator
+        # type
 
         self.sol_type = {}
         self.sol_type_rt = {}
-        xy = 'XY'
 
-        for c1 in ['P', 'N']:
+        if var_type == 'CYL':
 
-            for c2 in ['P', 'N']:
+            for c1 in ['P', 'N']:
 
-                for c3 in ['P', 'N']:
+                for c2 in ['P', 'N']:
 
-                    for c4 in ['P', 'N']:
+                    for c3 in ['P', 'N']:
 
-                        for c5 in ['P', 'N']:
+                        for c4 in ['P', 'N']:
 
-                            for c6 in ['P', 'N']:
+                            for c5 in ['P', 'N']:
 
-                                for c7 in ['X', 'Y']:
+                                for c6 in ['P', 'N']:
 
-                                    for c8 in ['X', 'Y']:
+                                    for c7 in ['X', 'Y']:
 
-                                        for c9 in ['X', 'Y']:
+                                        for c8 in ['X', 'Y']:
 
-                                            for c10 in ['X', 'Y']:
+                                            for c9 in ['X', 'Y']:
 
-                                                key = c1 + c2 + c3 + c4 + c5 + \
-                                                      c6 + '_' + c7 + c8 + \
-                                                      c9 + c10
+                                                for c10 in ['X', 'Y']:
 
-                                                self.sol_type[key] = 0
-                                                self.sol_type_rt[key] = 0
+                                                    key = c1 + c2 + c3 + c4 + \
+                                                          c5 + c6 + '_' + c7 + \
+                                                          c8 + c9 + c10
+
+                                                    self.sol_type[key] = 0
+                                                    self.sol_type_rt[key] = 0
+
+        elif var_type == 'SPH':
+
+            for c1 in ['P', 'N']:
+
+                for c2 in ['P', 'N']:
+
+                    for c3 in ['P', 'N']:
+
+                        for c4 in ['P', 'N']:
+
+                            for c5 in ['P', 'N']:
+
+                                for c6 in ['X', 'Y']:
+
+                                    for c7 in ['X', 'Y']:
+
+                                        key = c1 + c2 + c3 + c4 + c5 + '_' + \
+                                              c6 + c7
+
+                                        self.sol_type[key] = 0
+                                        self.sol_type_rt[key] = 0
+
+        else:
+            sys.exit('Invalid variator type')
 
         # Start stopwatch
 
