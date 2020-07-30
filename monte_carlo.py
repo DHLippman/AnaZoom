@@ -153,7 +153,7 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
 
                     # Write design to CODE V sequence file
 
-                    ana_zoom.save_seq(sol_num=sols.num_sol, path=path)
+                    ana_zoom.save_seq(path=path)
 
             # Add design to solutions
 
@@ -655,7 +655,9 @@ def check_sph_var_sol(efx, oal, bfl, f1, f2, f3_x, f3_y, f4, min_air=0.):
         group_efl = np.array([f1, f2, f3_x, f3_y, f4])
         group_type = np.array(['XY', 'XY', 'X', 'Y', 'XY'])
 
-    # Check for a valid solution (no group crashes or internal images)
+    # Check for a valid solution (no group crashes or internal images). Note
+    # that for cylindrical variators there is no easy way to filter internal
+    # images.
 
     if np.diff(group_z[::-1], axis=0).min() > min_air and not 0 < f1 < t1[0]:
 

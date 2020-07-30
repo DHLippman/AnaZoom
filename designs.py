@@ -716,7 +716,10 @@ class Solutions:
             template = '{0:>12s}{1:>8.0f}\n'
             for key in self.sort_sols(self.sol_type):
                 if self.sol_type[key]:
-                    repr_str += template.format(key, self.sol_type[key])
+                    power_type, orient_type = self.split_sol_type(key)
+                    power_type = self.abbrev_power_type(power_type, orient_type)
+                    sol_str = power_type + ' ' + orient_type
+                    repr_str += template.format(sol_str, self.sol_type[key])
 
             # Ray traceable solutions order solutions, if any found
 
@@ -725,7 +728,12 @@ class Solutions:
                             .format(self.num_sol_rt)
                 for key in self.sort_sols(self.sol_type_rt):
                     if self.sol_type_rt[key]:
-                        repr_str += template.format(key, self.sol_type_rt[key])
+                        power_type, orient_type = self.split_sol_type(key)
+                        power_type = self.abbrev_power_type(power_type,
+                                                            orient_type)
+                        sol_str = power_type + ' ' + orient_type
+                        repr_str += template.format(sol_str,
+                                                    self.sol_type_rt[key])
 
         # No solutions found
 
@@ -882,7 +890,7 @@ class Solutions:
 
         return self.comp_time
 
-    def demograph(self):
+    def demographics(self):
 
         # Initialize data structures
 
