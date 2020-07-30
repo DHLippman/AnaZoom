@@ -16,22 +16,6 @@ from time import time
 
 def main():
 
-    sols = load_obj('1e9_cyl_var_not_same_xy')
-
-    for i, sol in enumerate(sols.sols_rt):
-        sol.make_codev()
-        ray_trace = sol.check_ray_trace()
-        print(ray_trace)
-        if not ray_trace:
-            print(sol)
-
-    return
-
-    for sol in sols.sols_rt:
-        print(sol.check_ray_trace())
-
-    return
-
     # Set system values
 
     config = SystemConfig(bfl_rng=np.array([35., 65.]),
@@ -40,7 +24,7 @@ def main():
 
     # Perform Monte Carlo search for cylindrical variator solutions
 
-    sols = mc_search_cyl_var(config, num_trial=1e9, same_xy=False)
+    sols = mc_search_cyl_var(config, num_trial=1e9, same_xy=True)
     
     print(sols)
 

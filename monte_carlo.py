@@ -2,7 +2,7 @@
 Author:         David Henry Lippman
 File:           monte_carlo.py
 Date created:   07/22/20
-Date modified:  07/22/20
+Date modified:  07/28/20
 
 """
 
@@ -27,6 +27,9 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
 
     num_trial:      number of Monte Carlo trials
 
+    same_xy:        flag for whether the design form should be the same in X and
+                    Y
+
     """
 
     # Initialize variables
@@ -36,7 +39,7 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
 
     # Create solutions object
 
-    sols = Solutions(config, num_trial)
+    sols = Solutions(config, num_trial, "CYL", same_xy)
 
     # Create folder to store CODE V solutions in
 
@@ -92,8 +95,8 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
 
         # Check for valid six group zoom solution(s)
 
-        sols_fo = check_six_group(config.efx, config.efy, oal, bfl, f1, f2_x,
-                                  f2_y, f3_x, f3_y, f4, min_air)
+        sols_fo = check_cyl_var_sol(config.efx, config.efy, oal, bfl, f1, f2_x,
+                                    f2_y, f3_x, f3_y, f4, min_air)
 
         # Loop over found solution(s), if any
 
@@ -107,7 +110,8 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
 
             # Create anamorphic zoom design
 
-            ana_zoom = AnamorphicZoom(config, sol, num_zoom=5)
+            ana_zoom = AnamorphicZoom(config, sol, num_zoom=5,
+                                      sol_num=sols.num_sol)
 
             # Create model in CODE V
 
@@ -188,14 +192,14 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
     return sols
 
 
-def check_six_group(efx, efy, oal, bfl, f1, f2_x, f2_y, f3_x, f3_y, f4,
-                    min_air=0.):
+def check_cyl_var_sol(efx, efy, oal, bfl, f1, f2_x, f2_y, f3_x, f3_y, f4,
+                      min_air=0.):
 
     """
 
 
-    Identifies whether there is a valid solution for a six group anamorphic zoom
-    design.
+    Identifies whether there is a valid solution for a six group cylindrical
+    variator anamorphic zoom design.
 
     References:
 
@@ -279,8 +283,8 @@ def check_six_group(efx, efy, oal, bfl, f1, f2_x, f2_y, f3_x, f3_y, f4,
 
                 group_z, \
                 group_efl, \
-                group_type = combine_sols(group_z_x, group_z_y, f1, f2_x, f2_y,
-                                          f3_x, f3_y, f4)
+                group_type = combine_cyl_sols(group_z_x, group_z_y, f1, f2_x, f2_y,
+                                              f3_x, f3_y, f4)
 
                 # Check for a valid solution (no group crashes)
 
@@ -341,7 +345,7 @@ def calc_zoom_motion(oal, bfl, M, t2, f2, L, s4):
     return z
 
 
-def combine_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x, f3_y, f4):
+def combine_cyl_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x, f3_y, f4):
 
     """
 
@@ -387,3 +391,276 @@ def combine_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x, f3_y, f4):
     group_type[1: -1] = group_type[order]
 
     return group_z, group_efl, group_type
+
+
+def mc_search_sph_var(config, num_trial=1e6):
+
+    """
+
+
+    Performs a Monte Carlo of spherical variator design forms.
+
+
+    config:         system configuration object
+
+    num_trial:      number of Monte Carlo trials
+
+    """
+
+    # Initialize variables
+
+    num_trial = int(num_trial)
+    min_air = 0
+    same_xy = True  # necessarily since ana_rat = f3_x / f3_y
+
+    # Create solutions object
+
+    sols = Solutions(config, num_trial, "SPH", same_xy)
+
+    # Create folder to store CODE V solutions in
+
+    time_str = get_time_str()
+    path = 'C:\\CVUSER\\Anamorphic Zoom Solutions\\Cylindrical Variator\\' \
+           + time_str + '\\'
+    folder_exist(path)
+
+    # Set up progress bar and timer
+
+    num_prog = 100
+    progress = (num_trial * np.linspace(0.1, 1, num_prog)).astype(int)
+    start_time = time()
+
+    # Loop over Monte Carlo trials
+
+    print('\nPerforming a Monte Carlo search with {0:0.1e} trials\n'
+          .format(num_trial))
+
+    for i in range(num_trial):
+
+        # Randomly pick values for system TTL and BFL
+
+        ttl = rand_rng(config.ttl_rng[0], config.ttl_rng[1], sign=1)
+        bfl = rand_rng(config.bfl_rng[0], config.bfl_rng[1], sign=1)
+        oal = ttl - bfl
+
+        # Randomly pick a design form
+        #
+        # Relay group must be positive since f4 = bfl > 0
+
+        design_form = 2 * np.random.randint(0, 2, size=(4,)) - 1
+        design_form[-1] = 1
+
+        # Randomly pick group focal lengths
+
+        f1 = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
+                      sign=design_form[0])
+
+        f2 = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
+                        sign=design_form[1])
+
+        f3_x = rand_rng(config.efl_group_rng[0], config.efl_group_rng[1],
+                        sign=design_form[2])
+        f3_y = f3_x / config.ana_rat
+
+        f4 = bfl
+
+        # Check for valid five group zoom solution(s)
+
+        sols_fo = check_sph_var_sol(config.efx, oal, bfl, f1, f2, f3_x, f3_y,
+                                    f4, min_air)
+
+        # Loop over found solution(s), if any
+
+        for sol in sols_fo:
+
+            """
+
+            Successful first order solution
+
+            """
+
+            # Create anamorphic zoom design
+
+            ana_zoom = AnamorphicZoom(config, sol, num_zoom=5,
+                                      sol_num=sols.num_sol)
+
+            # Create model in CODE V
+
+            ana_zoom.make_codev()
+
+            # Check ray trace in CODE V at all zooms and fields
+
+            ana_zoom.check_ray_trace()
+
+            # Successful ray trace at all zooms and fields
+
+            if ana_zoom.ray_trace:
+
+                """
+
+                Successful ray traceable solution
+
+                """
+
+                # Optimize first order design
+
+                ana_zoom.optimize()
+
+                # Analyze optimized CODE V design for performance,
+                # aberrations, and packaging
+
+                ana_zoom.analyze()
+
+                # Check that optimization converged
+
+                if ana_zoom.avg_spot_size > 5:  # mm
+
+                    # If not, ray tracing failed (some rays trace
+                    # successfully but are behaving erratically
+
+                    ana_zoom.ray_trace = False
+
+                else:
+
+                    # Write design to CODE V sequence file
+
+                    ana_zoom.save_seq(path=path)
+
+            # Add design to solutions
+
+            sols.add_sol(ana_zoom)
+
+        # Check status
+
+        if i + 1 in progress:
+
+            perc = (np.asscalar(np.argwhere(i + 1 == progress)) + 1) / num_prog
+
+            cur_time = time()
+            pass_time = cur_time - start_time
+            full_time = pass_time / perc
+            remain_time = full_time - pass_time
+
+            print('{0:0.0f}% complete\n'.format(perc * 100))
+            print('Approximately {0} remaining'
+                  .format(format_time_str(remain_time)))
+            print(sols)
+
+    # Close out solution timer
+
+    sols.stopwatch(end=True)
+
+    # Save solutions to file if any are found
+
+    if sols.num_sol:
+        save_obj(sols, filename=time_str)
+
+    # Delete folder if no ray traceable solutions were found
+
+    if not sols.num_sol_rt:
+        folder_exist(path, erase=True)
+
+    return sols
+
+
+def check_sph_var_sol(efx, oal, bfl, f1, f2, f3_x, f3_y, f4, min_air=0.):
+
+    """
+
+
+    Identifies whether there is a valid solution for a five group spherical
+    variator anamorphic zoom design. Only valid solution types (via Dodoc) are:
+
+        A:     P - N - (Py - Px) - P
+        B:     N - N - (Py - Px) - P
+        C:     N - P - (Py - Px) - P
+        D:     P - P - (Nx - Ny) - P
+        E:     N - P - (Nx - Ny) - P
+
+    Only solution types A and E are found for reasonable boundary conditions.
+
+    B needs BFl > 300-ish
+    C needs BFL > 200-ish, f3_x > 400-ish, f1 > -20
+    D needs BFL < 20-ish, f1 > 400-ish
+
+    I also found a P - N - (Nx - Ny) - P solution that Dodoc didn't include that
+    doesn't crash or have internal images...albeit the design was absurdly long
+
+    References:
+
+    [1]  A. Dodoc, “Anamorphic prime and zoom lenses,” in Zoom Lenses VI, San
+         Diego, United States, Sep. 2019, p. 2, doi: 10.1117/12.2527911.
+
+
+    efx:            effective focal lengths in X of zoom system [mm]
+
+    oal:            overall length of zoom system [mm]
+
+    bfl:            back focal length of zoom system [mm]
+
+    f1:             group 1 focal length [mm]
+
+    f2:             group 2 focal length [mm]
+
+    f3_x:           group 3 focal length in X [mm]
+
+    f3_y:           group 3 focal length in Y [mm]
+
+    f4:             group 4 focal length [mm]
+
+    min_air:        minimum air space between groups; default is 0
+
+    """
+
+    # Initialize data structure
+
+    sols = []
+
+    # Calculate group 2 magnification and image conjugates
+
+    m2 = -efx * f3_x / f1 / f4
+    s2 = f2 * (1 / m2 - 1)
+    s2p = f2 * (1 - m2)
+
+    # Calculate group airspaces
+
+    t1 = f1 - s2
+    t2_x = s2p + f3_x
+    t2_y = s2p + f3_y
+
+    # Calculate group zoom motion and form focal length and type arrays based
+    # on order of cylindrical compensators
+
+    group_z = np.ones((5, efx.size)) * bfl
+    group_z[0, :] += oal
+    group_z[1, :] = group_z[0, :] - t1
+
+    # YX compensator order (positive f3's)
+
+    if t2_x[0] > t2_y[0]:
+
+        group_z[2, :] = group_z[1, :] - t2_y
+        group_z[3, :] = group_z[1, :] - t2_x
+
+        group_efl = np.array([f1, f2, f3_y, f3_x, f4])
+        group_type = np.array(['XY', 'XY', 'Y', 'X', 'XY'])
+
+    # XY compensator order (negative f3's)
+
+    else:
+
+        group_z[2, :] = group_z[1, :] - t2_x
+        group_z[3, :] = group_z[1, :] - t2_y
+
+        group_efl = np.array([f1, f2, f3_x, f3_y, f4])
+        group_type = np.array(['XY', 'XY', 'X', 'Y', 'XY'])
+
+    # Check for a valid solution (no group crashes or internal images)
+
+    if np.diff(group_z[::-1], axis=0).min() > min_air and not 0 < f1 < t1[0]:
+
+        # Add solution to array
+
+        sols.append([group_z, group_efl, group_type])
+
+    return sols
