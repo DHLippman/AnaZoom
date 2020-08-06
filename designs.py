@@ -708,6 +708,14 @@ class Solutions:
         repr_str = '\n' + 10 * '~' + ' ANAMORPHIC ZOOM SOLUTIONS ' + \
                    10 * '~' + '\n\n'
 
+        # Solutions info  
+
+        repr_str += 'Number of trials:\t\t{0:0.2e}\n'.format(self.num_trial)
+        repr_str += 'Variator type:\t\t\t{0}\n'.format(self.var_type)
+        repr_str += 'Same X-Y type:\t\t\t{0}\n'.format(self.same_xy)
+        repr_str += 'Computation time:\t\t{0}\n\n'\
+                    .format(format_time_str(self.comp_time))
+
         # First order solutions, if any found
 
         if self.num_sol:
@@ -739,12 +747,6 @@ class Solutions:
 
         else:
             repr_str += 'No solutions found\n'
-
-
-        # Print computation time
-
-        repr_str += '\nComputation time:\t\t{0}\n'\
-                    .format(format_time_str(self.comp_time))
 
         repr_str += '\n' + (2 * 10 + 27) * '~' + '\n\n'
 
