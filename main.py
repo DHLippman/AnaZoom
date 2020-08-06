@@ -7,7 +7,7 @@ Date modified:  07/20/20
 """
 
 from designs import SystemConfig, AnamorphicZoom, Solutions
-from monte_carlo import mc_search_cyl_var
+from monte_carlo import mc_search_cyl_var, mc_search_sph_var
 from utilities import load_obj, save_obj, folder_exist
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,7 +24,7 @@ def main():
 
     # Perform Monte Carlo search for cylindrical variator solutions
 
-    sols = mc_search_cyl_var(config, num_trial=1e9, same_xy=True)
+    sols = mc_search_sph_var(config, num_trial=1e6)
     
     print(sols)
 

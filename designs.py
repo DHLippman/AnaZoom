@@ -545,7 +545,7 @@ class AnamorphicZoom:
 
         lstyles = np.empty_like(self.group_type)
         lstyles[self.group_type == 'XY'] = '-'
-        lstyles[self.group_type == 'X'] = '-'
+        lstyles[self.group_type == 'X'] = ':'
         lstyles[self.group_type == 'Y'] = '--'
 
         # Initialize figure
@@ -556,7 +556,7 @@ class AnamorphicZoom:
         # Create second y-axis
 
         ax_par = ax.twinx()
-        ax_par.spines["left"].set_position(("axes", -0.2))
+        ax_par.spines["left"].set_position(("axes", -0.15))
         ax_par.set_frame_on(True)
         ax_par.patch.set_visible(False)
         for sp in ax_par.spines.values():

@@ -331,7 +331,7 @@ def calc_zoom_motion(oal, bfl, M, t2, f2, L, s4):
 
     # Calculate air spaces
 
-    s2 = ((M - 1) * t2 + L) / ((M - 1) - M * t2 / f2)
+    s2 = ((M - 1) * t2 + L) / (M - 1 - M * t2 / f2)
     t1 = oal - L + s4 - s2
     t3 = oal - t1 - t2
 
