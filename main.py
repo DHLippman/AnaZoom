@@ -22,6 +22,7 @@ def main():
                           ttl_rng=np.array([240., 360.]),
                           efl_group_rng=np.array([20., 500.]))
 
+
     # Perform Monte Carlo search for cylindrical variator solutions
 
     sols = mc_search_sph_var(config, num_trial=1e6)
