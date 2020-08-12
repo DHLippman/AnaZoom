@@ -8,11 +8,12 @@ Date modified:  07/22/20
 
 from codev import create_ana_zoom, ray_trace, opti_ana_zoom, avg_spot_size, \
     avg_group_efl, avg_clear_aper, tho, save_seq
-from utilities import format_time_str
+from utilities import format_time_str, sort_dict
 import numpy as np
 from time import time
 import sys
 import matplotlib.pyplot as plt
+import matplotlib.patches as ptc
 from matplotlib.ticker import FormatStrFormatter
 import plotly.graph_objects as go
 
@@ -83,6 +84,10 @@ class SystemConfig:
         self.wl = wl
         self.wl_ref = wl_ref
         self.num_fld = 13
+
+        # Calculate OAL range given TTL and BFL range
+
+        self.oal_rng = self.ttl_rng - np.flip(self.bfl_rng, axis=0)
 
         # Calculate EFL in Y and X for all zoom positions
 
@@ -264,7 +269,7 @@ class AnamorphicZoom:
 
         # Evaluation parameters
 
-        self.ray_trace = 0
+        self.ray_trace = False
         self.avg_spot_size = 0
         self.avg_group_efl = 0
         self.avg_clear_aper = 0
@@ -307,6 +312,9 @@ class AnamorphicZoom:
         repr_str += 'EFY:\t\t\t\t\t[{0:0.1f}, {1:0.1f}] mm\n\n' \
                     .format(self.efy[0], self.efy[-1])
 
+        repr_str += 'TTL:\t\t\t\t\t{0:0.2f} mm\n'.format(self.ttl)
+        repr_str += 'BFL:\t\t\t\t\t{0:0.2f} mm\n\n'.format(self.bfl)
+
         repr_str += 'Variator type:\t\t\t{0}\n'\
                     .format(self.vari_str.capitalize())
         if self.power_type_x == self.power_type_y:
@@ -332,6 +340,7 @@ class AnamorphicZoom:
                                         self.group_efl[g])
 
         repr_str += '\n'
+        repr_str += 'Ray traceable:\t\t\t{0}\n'.format(self.ray_trace)
 
         if self.avg_spot_size:
             repr_str += 'Avg. spot size:\t\t\t{0:0.2f} mm\n'\
@@ -476,15 +485,15 @@ class AnamorphicZoom:
 
         """
 
-        # Calculate average spot size
+        # Calculates average spot size across all fields and zooms
 
         self.avg_spot_size = avg_spot_size()
 
-        # Calculate average group efl
+        # Calculates average group efl across all groups
 
         self.avg_group_efl = avg_group_efl(self.num_group)
 
-        # Calculate average group efl
+        # Calculates average clear aperture across all surfaces and zooms
 
         self.avg_clear_aper = avg_clear_aper()
 
@@ -550,6 +559,8 @@ class AnamorphicZoom:
 
         # Initialize figure
 
+        font = {'size': 14}
+        plt.rc('font', **font)
         fig, ax = plt.subplots(figsize=(12, 6))
         plt.subplots_adjust(left=0.25, right=0.65)
 
@@ -584,9 +595,10 @@ class AnamorphicZoom:
             # Plot zoom motion
 
             ax.plot(self.group_z_og[i, :], self.config.efx, color=clrs[i],
-                    linestyle=lstyles[i], label=leg_str)
+                    linestyle=lstyles[i], label=leg_str, lw=3)
 
-            ax_par.plot(self.group_z_og[i, :], self.config.efy, color='none')
+            ax_par.plot(self.group_z_og[i, :], self.config.efy, color='none',
+                        lw=3)
 
         # Set plot settings
 
@@ -614,7 +626,8 @@ class Solutions:
     """
 
 
-    Anamorphic zoom solutions object
+    Anamorphic zoom solutions object. Note that with plotly renderer, nodes can
+    be manually re-positioned.
 
 
     """
@@ -722,7 +735,7 @@ class Solutions:
             repr_str += 'First order solutions:\t{0:0.0f}\n\n'\
                         .format(self.num_sol)
             template = '{0:>12s}{1:>8.0f}\n'
-            for key in self.sort_sols(self.sol_type):
+            for key in sort_dict(self.sol_type):
                 if self.sol_type[key]:
                     power_type, orient_type = self.split_sol_type(key)
                     power_type = self.abbrev_power_type(power_type, orient_type)
@@ -734,7 +747,7 @@ class Solutions:
             if self.num_sol_rt:
                 repr_str += '\nRay traceable solutions:\t{0:0.0f}\n\n'\
                             .format(self.num_sol_rt)
-                for key in self.sort_sols(self.sol_type_rt):
+                for key in sort_dict(self.sol_type_rt):
                     if self.sol_type_rt[key]:
                         power_type, orient_type = self.split_sol_type(key)
                         power_type = self.abbrev_power_type(power_type,
@@ -797,22 +810,6 @@ class Solutions:
         """
 
         return self.sols[sol_num]
-
-    def sort_sols(self, sols):
-
-        """
-
-
-        Sorts a provided solution dictionary by value, descending
-
-
-        sols:       solution dictionary to sort
-
-        """
-
-        return {k: v for k, v in sorted(sols.items(),
-                                        key=lambda item: item[1],
-                                        reverse=True)}
 
     def split_sol_type(self, sol_type):
 
@@ -892,115 +889,11 @@ class Solutions:
 
         return self.comp_time
 
-    def demographics(self):
-
-        # Initialize data structures
-
-        sol_type = []
-        sol_type_rt = []
-        ray_trace = {}
-        avg_spot_size = {}
-        avg_group_efl = {}
-        avg_clear_aper = {}
-        SA = {}
-        TCO = {}
-        TAS = {}
-        SAS = {}
-        PTB = {}
-
-        # Determine ray traceability likelihood for found first order solutions
-
-        for sol in self.sols:
-
-            # Check to see if this solution type has been initialized yet
-
-            if sol.sol_type not in sol_type:
-
-                sol_type.append(sol.sol_type)
-                ray_trace[sol.sol_type] = np.zeros(2, dtype=int)
-
-            # Check whether solution ray traces
-
-            if sol.ray_trace:
-                ray_trace[sol.sol_type][0] += 1
-            else:
-                ray_trace[sol.sol_type][1] += 1
-
-        # Calculate ray traceability liklihood
-
-        for s_type in sol_type:
-            ray_trace[s_type] = 100 * ray_trace[s_type][0] / \
-                                      ray_trace[s_type].sum()
-
-        # Loop over ray traceable solutions
-
-        for sol in self.sols_rt:
-
-            # Check to see if this solution type has been initialized yet
-
-            if sol.sol_type not in sol_type_rt:
-
-                # Add evaluation parameters to dictionary by initializing list
-
-                sol_type_rt.append(sol.sol_type)
-                avg_spot_size[sol.sol_type] = [sol.avg_spot_size]
-                avg_group_efl[sol.sol_type] = [sol.avg_group_efl]
-                avg_clear_aper[sol.sol_type] = [sol.avg_clear_aper]
-                SA[sol.sol_type] = [sol.tho[0, :].mean()]
-                TCO[sol.sol_type] = [sol.tho[1, :].mean()]
-                TAS[sol.sol_type] = [sol.tho[2, :].mean()]
-                SAS[sol.sol_type] = [sol.tho[3, :].mean()]
-                PTB[sol.sol_type] = [sol.tho[4, :].mean()]
-
-            else:
-
-                # Add evaluation parameters to dictionary by appending to list
-
-                avg_spot_size[sol.sol_type].append(sol.avg_spot_size)
-                avg_group_efl[sol.sol_type].append(sol.avg_group_efl)
-                avg_clear_aper[sol.sol_type].append(sol.avg_clear_aper)
-                SA[sol.sol_type].append(sol.tho[0, :].mean())
-                TCO[sol.sol_type].append(sol.tho[1, :].mean())
-                TAS[sol.sol_type].append(sol.tho[2, :].mean())
-                SAS[sol.sol_type].append(sol.tho[3, :].mean())
-                PTB[sol.sol_type].append(sol.tho[4, :].mean())
-
-        # Plot ray traceability by solution type
-
-        fig, ax = plt.subplots()
-
-        ax.bar(ray_trace.keys(), ray_trace.values())
-        ax.set(xlabel='Solution type', ylabel='Ray traceability likelihood [%]')
-
-        # Plot average spot size and average group EFL by ray traceable solution
-        # type
-
-        fig, ax = plt.subplots()
-
-        for s_type in sol_type_rt:
-            ax.scatter(avg_spot_size[s_type], avg_group_efl[s_type], s=5,
-                       label=s_type)
-            ax.set(xlabel='Average spot size [mm]',
-                   ylabel='Average group EFL [mm]')
-            ax.set_xlim(0, 5)
-            ax.legend()
-
-        """
-        
-        Others:
-        
-        - cylinder orientation
-        - aberration breakdown
-        
-        """
-
-        return
-
-    def plot_sankey(self):
+    def type_sankey(self):
 
         # Initialize variables
 
-        plot_fail_factor = 5  # how many times more unfound solutions to plot
+        plot_fail_factor = 1  # how many times more unfound solutions to plot
                               # not to scale
 
         # Determine number of trials string
@@ -1013,8 +906,6 @@ class Solutions:
             num_trial_str = '{0:0.0f} thousand'.format(self.num_trial / 1e3)
         else:
             num_trial_str = '{0:0.0f} '.format(self.num_trial)
-
-        # Abbreviate power type, if possible, for plotting clarity
 
         # First order solutions
 
@@ -1051,16 +942,24 @@ class Solutions:
             except KeyError:
                 power_type_rt[power_str_abbrev] = value
 
+        # Remove PPPP due to internal image
+
+        if "PPPP" in power_type:
+            power_type.pop("PPPP")
+
+        if "PPPP" in power_type_rt:
+            power_type_rt.pop("PPPP")
+
         # Sort solution types by number found, for plotting clarity
 
-        power_type_sort = self.sort_sols(power_type)
-        power_type_rt_sort = self.sort_sols(power_type_rt)
+        power_type_sort = sort_dict(power_type)
+        power_type_rt_sort = sort_dict(power_type_rt)
 
         # Form data arrays for Sankey plot
 
         label = ["{0} Monte Carlo trials".format(num_trial_str),
                  "Invalid solutions", "Invalid solutions"]
-        color = ["blue", "red", "red"]
+        color = ["black", "red", "red"]
 
         source = [0, 1]
         target = [1, 2]
@@ -1083,7 +982,7 @@ class Solutions:
 
             if num_sol_fo:
                 label.append("{0} solutions ({1:0.0f})".format(key, num_sol_fo))
-                color.append("green")
+                color.append("blue")
 
                 node_count += 1
                 num_sol_fo_count += num_sol_fo
@@ -1119,7 +1018,7 @@ class Solutions:
         # Form node and link dictionaries
 
         node = dict(pad=25,
-                    thickness=30,
+                    thickness=50,
                     line=dict(color=None),
                     label=label,
                     color=color)
@@ -1130,7 +1029,7 @@ class Solutions:
 
         # Create Sankey data
 
-        data = [go.Sankey(node=node, link=link)]
+        data = [go.Sankey(node=node, link=link, arrangement='snap')]
 
         # Initialize Sankey figure
 
@@ -1140,14 +1039,760 @@ class Solutions:
 
         title = "Monte Carlo First-Order Search"
         title += " - {0} Variator".format(self.sols[0].vari_str.capitalize())
+        title = ''
 
-        font_size = 10
+        font_size = 30
         fig.update_layout(title_text=title,
-                          font=dict(family="Arial", size=font_size))
+                          font=dict(family="Helvetica", size=font_size))
         fig.show()
-
-        
 
         return
 
+    def type_breakdown(self):
 
+        """
+
+
+        Plots breakdown of solution types based on power and cylinder
+        orientation
+
+
+        """
+
+        # Form dictionaries of valid first-order solutions for power and orientation
+
+        power_dict = {}
+        orient_dict = {}
+
+        for key, val in zip(self.sol_type.keys(), self.sol_type.values()):
+
+            # Valid first-order solution type found
+
+            if val:
+
+                # Form orientation and power keys
+
+                orient_key = key[-4:]
+                if self.var_type == "CYL":
+                    if self.same_xy:
+                        power_key = key[0]
+                        for i, c in enumerate(orient_key):
+                            if c == 'X':
+                                power_key += key[i + 1]
+                        power_key += key[5]
+                    else:
+                        power_key = key[0: 6]
+
+                else:
+                    power_key = key[0: 3] + key[4]
+
+                # Update power dictionary
+
+                try:
+                    power_dict[power_key] += val
+                except KeyError:
+                    power_dict[power_key] = val
+
+                # Update orientation dictionary
+
+                try:
+                    orient_dict[orient_key] += val
+                except KeyError:
+                    orient_dict[orient_key] = val
+
+        # Sort dictionaries by value, descending
+
+        power_dict = sort_dict(power_dict)
+        orient_dict = sort_dict(orient_dict)
+
+        # Expand dictionaries to have list values for ray tracing results also
+
+        for key in power_dict:
+            power_dict[key] = [power_dict[key], 0]
+
+        for key in orient_dict:
+            orient_dict[key] = [orient_dict[key], 0]
+
+        # Add ray traceable solutions to dictionaries
+
+        for key, val in zip(self.sol_type_rt.keys(), self.sol_type_rt.values()):
+
+            # Ray traceable solution type found
+
+            if val:
+
+                # Form orientation and power keys
+
+                orient_key = key[-4:]
+                if self.var_type == "CYL":
+                    if self.same_xy:
+                        power_key = key[0]
+                        for i, c in enumerate(orient_key):
+                            if c == 'X':
+                                power_key += key[i + 1]
+                        power_key += key[5]
+                    else:
+                        power_key = key[0: 6]
+
+                else:
+                    power_key = key[0: 3] + key[4]
+
+                # Update power dictionary
+
+                power_dict[power_key][1] += val
+
+                # Update orientation dictionary
+
+                orient_dict[orient_key][1] += val
+
+        # Remove PPPP due to internal image
+
+        if "PPPP" in power_dict:
+            power_dict.pop("PPPP")
+
+        # Form power lists for bar chart
+
+        power_labels = []
+        sols_power_fo = []
+        sols_power_rt = []
+
+        for key, val in zip(power_dict.keys(), power_dict.values()):
+            power_labels.append(key)
+            sols_power_fo.append(val[0])
+            sols_power_rt.append(val[1])
+
+        # Form orientation lists for bar chart
+
+        orient_labels = []
+        sols_orient_fo = []
+        sols_orient_rt = []
+
+        for key, val in zip(orient_dict.keys(), orient_dict.values()):
+            orient_labels.append(key)
+            sols_orient_fo.append(val[0])
+            sols_orient_rt.append(val[1])
+
+        # Initialize figure
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6.5))
+        plt.subplots_adjust(hspace=0.4)
+        ax1b = ax1.twinx()
+        ax2b = ax2.twinx()
+
+        color1 = '#1b75bb'
+        color2 = '#37b34a'
+
+        # Plot bar charts
+
+        # Power
+
+        x = np.arange(len(power_labels))  # the label locations
+        width = 0.4  # the width of the bars
+
+        ax1.bar(x - width / 2, sols_power_fo, width=width, color=color1)
+        ax1b.bar(x + width / 2, sols_power_rt, width=width, color=color2)
+
+        ax1.set_ylabel('Valid first-order solutions', color=color1)
+        ax1.tick_params(axis='y', labelcolor=color1)
+        ax1b.set_ylabel('Ray traceable solutions', color=color2)
+        ax1b.tick_params(axis='y', labelcolor=color2)
+
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(power_labels, rotation=45)
+
+        # Orientation
+
+        x = np.arange(len(orient_labels))  # the label locations
+        width = 0.4  # the width of the bars
+
+        ax2.bar(x - width / 2, sols_orient_fo, width=width, color=color1)
+        ax2b.bar(x + width / 2, sols_orient_rt, width=width, color=color2)
+
+        ax2.set_ylabel('Valid first-order solutions', color=color1)
+        ax2.tick_params(axis='y', labelcolor=color1)
+        ax2b.set_ylabel('Ray traceable solutions', color=color2)
+        ax2b.tick_params(axis='y', labelcolor=color2)
+
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(orient_labels, rotation=45)
+
+        return
+
+    def type_breakdown_hatch(self):
+
+        """
+
+
+        Plots breakdown of solution types based on power and cylinder
+        orientation
+
+
+        """
+
+        # Create orientation-to-index dictionary
+
+        orient_ind = {'XXYY': 0,
+                      'XYXY': 1,
+                      'XYYX': 2,
+                      'YYXX': 3,
+                      'YXYX': 4,
+                      'YXXY': 5}
+        
+        # Create orientation hatching patterns
+
+        density = 3
+        orient_hatch = [density * "/", density * "\\",
+                        2 * density * "/", 2 * density * "\\",
+                        density * "X",
+                        density * "+"]
+
+        # Form dictionaries of valid first-order solutions for power and
+        # orientation
+
+        power_dict = {}
+
+        for key, val in zip(self.sol_type.keys(), self.sol_type.values()):
+
+            # Valid first-order solution type found
+
+            if val:
+
+                # Form orientation and power keys
+
+                orient_key = key[-4:]
+                if self.var_type == "CYL":
+                    if self.same_xy:
+                        power_key = key[0]
+                        for i, c in enumerate(orient_key):
+                            if c == 'X':
+                                power_key += key[i + 1]
+                        power_key += key[5]
+                    else:
+                        power_key = key[0: 6]
+
+                else:
+                    power_key = key[0: 3] + key[4]
+
+                # Update power dictionary
+
+                try:
+                    power_dict[power_key][0, orient_ind[orient_key]] += val
+                except KeyError:
+                    power_dict[power_key] = np.zeros((2, 6))
+                    power_dict[power_key][0, orient_ind[orient_key]] += val
+
+        # Add ray traceable solutions to dictionaries
+
+        for key, val in zip(self.sol_type_rt.keys(), self.sol_type_rt.values()):
+
+            # Ray traceable solution type found
+
+            if val:
+
+                # Form orientation and power keys
+
+                orient_key = key[-4:]
+                if self.var_type == "CYL":
+                    if self.same_xy:
+                        power_key = key[0]
+                        for i, c in enumerate(orient_key):
+                            if c == 'X':
+                                power_key += key[i + 1]
+                        power_key += key[5]
+                    else:
+                        power_key = key[0: 6]
+
+                else:
+                    power_key = key[0: 3] + key[4]
+
+                # Update power dictionary
+
+                power_dict[power_key][1, orient_ind[orient_key]] += val
+
+        # Remove PPPP due to internal image
+
+        if "PPPP" in power_dict:
+            power_dict.pop("PPPP")
+
+        # Determine dictionary sort order based no the number of valid first-
+        # order solutions
+
+        sol_types = np.array(list(power_dict.keys()), dtype='<U6')
+        num_sol_fo = np.array([val[0, :].sum()
+                               for val in list(power_dict.values())], dtype=int)
+        sol_types_sort = sol_types[num_sol_fo.argsort()[::-1]]
+
+        # Make solution array to make stacked bar chart
+
+        num_sol_types = len(sol_types)
+        num_sols_fo = np.zeros((6, num_sol_types), dtype=int)
+        num_sols_rt = np.zeros((6, num_sol_types), dtype=int)
+
+        for i, sol_type in enumerate(sol_types_sort):
+            num_sols_fo[:, i] = power_dict[sol_type][0, :].transpose()
+            num_sols_rt[:, i] = power_dict[sol_type][1, :].transpose()
+
+        # Initialize figure
+
+        fig, ax1 = plt.subplots(figsize=(10, 6))
+        ax2 = ax1.twinx()
+
+        color1 = '#1b75bb'  # blue
+        color2 = '#37b34a'  # green
+
+        ind = np.arange(num_sol_types)  # the label locations
+        width = 0.4  # the width of the bars
+
+        # Plot bar charts
+
+        # Loop over orientation rows
+
+        for i, (orient_fo, orient_rt) in enumerate(zip(num_sols_fo,
+                                                       num_sols_rt)):
+
+            # Valid first-order solutions
+
+            ax1.bar(ind - width / 2, orient_fo, width=width,
+                    bottom=np.sum(num_sols_fo[0: i, :], axis=0),
+                    facecolor=color1, edgecolor='k', hatch=orient_hatch[i])
+
+            # Ray traceable solutions
+
+            ax2.bar(ind + width / 2, orient_rt, width=width,
+                    bottom=np.sum(num_sols_rt[0: i, :], axis=0),
+                    facecolor=color2, edgecolor='k', hatch=orient_hatch[i])
+
+        # Plot settings
+
+        ax1.set_ylabel('Valid first-order solutions', color=color1)
+        ax2.set_ylabel('Ray traceable solutions', color=color2)
+        ax1.tick_params(axis='y', labelcolor=color1)
+        ax2.tick_params(axis='y', labelcolor=color2)
+        ax1.set_ylim(0, 1.08 * np.sum(num_sols_fo, axis=0).max())
+        ax2.set_ylim(0, 1.08 * np.sum(num_sols_rt, axis=0).max())
+
+        ax1.set_xticks(ind)
+        ax1.set_xticklabels(sol_types_sort, rotation=45)
+
+        # Make custom legend
+
+        legend_elements = []
+        for hatch, key in zip(orient_hatch, orient_ind.keys()):
+            legend_elements.append(ptc.Patch(facecolor='w', edgecolor='k',
+                                             hatch=hatch, label=key))
+
+        ax1.legend(handles=legend_elements)
+
+        return
+
+    def type_vs_spo(self):
+
+        # Initialize data structures
+
+        spo = {}
+
+        # Fill data structure with
+
+        for sol in self.sols_rt:
+
+            # Get power type
+
+            power_str, orient_str = self.split_sol_type(sol.sol_type)
+            if self.same_xy:
+                power_str = self.abbrev_power_type(power_str, orient_str)
+
+            # Fill dictionary with average spot size and average group EFL
+
+            try:
+                spo[power_str].append(sol.avg_spot_size)
+            except KeyError:
+                spo[power_str] = [sol.avg_spot_size]
+
+        # Sort dictionary by median values, ascending
+
+        num_type = len(spo)
+        keys = np.empty(num_type, dtype='<U6')
+        vals = np.empty(num_type)
+        for i, (key, val) in enumerate(zip(spo.keys(), spo.values())):
+            keys[i] = key
+            vals[i] = np.median(val)
+
+        order = np.argsort(vals)
+        keys_sort = keys[order]
+
+        # Initialize figure
+
+        fig, ax = plt.subplots()
+
+        # Plot violin plot of average spot size for different solution types
+
+        vals = []
+        labels = ['']
+        median = np.empty(num_type)
+        min_val = np.empty(num_type)
+        max_val = np.empty(num_type)
+        perc_25 = np.empty(num_type)
+        perc_75 = np.empty(num_type)
+
+        for i, key in enumerate(keys_sort):
+            labels.append(key)
+            vals.append(spo[key])
+            min_val[i], \
+            perc_25[i], \
+            median[i], \
+            perc_75[i],\
+            max_val[i] = np.percentile(spo[key], [0, 25, 50, 75, 100])
+
+        parts = ax.violinplot(vals, showextrema=False)
+
+        inds = np.arange(num_type) + 1
+        ax.vlines(inds, perc_25, perc_75, color='k', linestyle='-', lw=5)
+        ax.vlines(inds, min_val, max_val, color='k', linestyle='-', lw=1)
+        ax.scatter(inds, median, color='w', zorder=3)
+
+        # Plot settings
+
+        for pc in parts['bodies']:
+            pc.set_facecolor('#37b34a')
+            pc.set_edgecolor('black')
+            pc.set_alpha(1)
+
+        ax.set_xticklabels(labels)
+        ax.set_ylabel('Average spot size [mm]')
+        ax.set_yscale('log')
+
+        return
+
+    def type_vs_packaging(self):
+
+        # Initialize data structures
+
+        ttl = {}
+        bfl = {}
+        ca = {}
+
+        # Fill data structure with
+
+        for sol in self.sols_rt:
+
+            # Get power type
+
+            power_str, orient_str = self.split_sol_type(sol.sol_type)
+            if self.same_xy:
+                power_str = self.abbrev_power_type(power_str, orient_str)
+
+            # Fill dictionary with TTL values
+
+            try:
+                ttl[power_str].append(sol.ttl)
+            except KeyError:
+                ttl[power_str] = [sol.ttl]
+
+            # Fill dictionary with BFL values
+
+            try:
+                bfl[power_str].append(sol.bfl)
+            except KeyError:
+                bfl[power_str] = [sol.bfl]
+
+            # Fill dictionary with average clear aperture values
+
+            try:
+                ca[power_str].append(sol.avg_clear_aper)
+            except KeyError:
+                ca[power_str] = [sol.avg_clear_aper]
+
+        # Initialize figure
+
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(14, 5))
+        plt.subplots_adjust(wspace=0.3)
+        num_type = len(ttl)
+        inds = np.arange(num_type) + 1
+
+        # Plot TTL results
+
+        # Sort dictionary by median values, ascending
+
+        keys = np.empty(num_type, dtype='<U6')
+        vals = np.empty(num_type)
+        for i, (key, val) in enumerate(zip(ttl.keys(), ttl.values())):
+            keys[i] = key
+            vals[i] = np.median(val)
+
+        order = np.argsort(vals)
+        keys_sort = keys[order]
+
+        # Plot violin plot of average spot size for different solution types
+
+        vals = []
+        labels = ['']
+        median = np.empty(num_type)
+        min_val = np.empty(num_type)
+        max_val = np.empty(num_type)
+        perc_25 = np.empty(num_type)
+        perc_75 = np.empty(num_type)
+
+        for i, key in enumerate(keys_sort):
+            labels.append(key)
+            vals.append(ttl[key])
+            min_val[i], \
+            perc_25[i], \
+            median[i], \
+            perc_75[i],\
+            max_val[i] = np.percentile(ttl[key], [0, 25, 50, 75, 100])
+
+        parts_ttl = ax1.violinplot(vals, showextrema=False)
+
+        ax1.vlines(inds, perc_25, perc_75, color='k', linestyle='-', lw=5)
+        ax1.vlines(inds, min_val, max_val, color='k', linestyle='-', lw=1)
+        ax1.scatter(inds, median, color='w', zorder=3)
+
+        # Plot settings
+
+        for pc in parts_ttl['bodies']:
+            pc.set_facecolor('#1b75bb')
+            pc.set_edgecolor('black')
+            pc.set_alpha(1)
+
+        ax1.set_xticklabels(labels)
+        ax1.set_ylabel('Total track length [mm]')
+
+        # Plot BFL results
+
+        # Sort dictionary by median values, ascending
+
+        keys = np.empty(num_type, dtype='<U6')
+        vals = np.empty(num_type)
+        for i, (key, val) in enumerate(zip(bfl.keys(), bfl.values())):
+            keys[i] = key
+            vals[i] = np.median(val)
+
+        order = np.argsort(vals)
+        keys_sort = keys[order]
+
+        # Plot violin plot of average spot size for different solution types
+
+        vals = []
+        labels = ['']
+        median = np.empty(num_type)
+        min_val = np.empty(num_type)
+        max_val = np.empty(num_type)
+        perc_25 = np.empty(num_type)
+        perc_75 = np.empty(num_type)
+
+        for i, key in enumerate(keys_sort):
+            labels.append(key)
+            vals.append(bfl[key])
+            min_val[i], \
+            perc_25[i], \
+            median[i], \
+            perc_75[i], \
+            max_val[i] = np.percentile(bfl[key], [0, 25, 50, 75, 100])
+
+        parts_bfl = ax2.violinplot(vals, showextrema=False)
+
+        ax2.vlines(inds, perc_25, perc_75, color='k', linestyle='-', lw=5)
+        ax2.vlines(inds, min_val, max_val, color='k', linestyle='-', lw=1)
+        ax2.scatter(inds, median, color='w', zorder=3)
+
+        # Plot settings
+
+        for pc in parts_bfl['bodies']:
+            pc.set_facecolor('red')
+            pc.set_edgecolor('black')
+            pc.set_alpha(1)
+
+        ax2.set_xticklabels(labels)
+        ax2.set_ylabel('Back focal length [mm]')
+
+        # Plot CA results
+
+        # Sort dictionary by median values, ascending
+
+        keys = np.empty(num_type, dtype='<U6')
+        vals = np.empty(num_type)
+        for i, (key, val) in enumerate(zip(ca.keys(), ca.values())):
+            keys[i] = key
+            vals[i] = np.median(val)
+
+        order = np.argsort(vals)
+        keys_sort = keys[order]
+
+        # Plot violin plot of average spot size for different solution types
+
+        vals = []
+        labels = ['']
+        median = np.empty(num_type)
+        min_val = np.empty(num_type)
+        max_val = np.empty(num_type)
+        perc_25 = np.empty(num_type)
+        perc_75 = np.empty(num_type)
+
+        for i, key in enumerate(keys_sort):
+            labels.append(key)
+            vals.append(ca[key])
+            min_val[i], \
+            perc_25[i], \
+            median[i], \
+            perc_75[i], \
+            max_val[i] = np.percentile(ca[key], [0, 25, 50, 75, 100])
+
+        parts_ca = ax3.violinplot(vals, showextrema=False)
+
+        ax3.vlines(inds, perc_25, perc_75, color='k', linestyle='-', lw=5)
+        ax3.vlines(inds, min_val, max_val, color='k', linestyle='-', lw=1)
+        ax3.scatter(inds, median, color='w', zorder=3)
+
+        # Plot settings
+
+        for pc in parts_ca['bodies']:
+            pc.set_facecolor('orange')
+            pc.set_edgecolor('black')
+            pc.set_alpha(1)
+
+        ax3.set_xticklabels(labels)
+        ax3.set_ylabel('Average element clear aperture [mm]')
+
+        return
+
+    def analyze_search_bound(self):
+
+        # Initialize variables
+
+        sols_list = [self.sols, self.sols_rt]
+        num_sol_list = [self.num_sol, self.num_sol_rt]
+        ylabel_str_list = ['Valid first-order ', 'Ray traceable ']
+
+        num_bin = 100
+        num_group = 5
+        if self.var_type == 'CYL':
+            num_group += 1
+
+        buffer = 0.1
+        buffer_1 = buffer * np.diff(self.config.efl_group_rng)
+        buffer_2 = buffer * np.diff(self.config.ttl_rng)
+        buffer_3 = buffer * np.diff(self.config.bfl_rng)
+
+        # Initialize figure
+
+        fig, axs = plt.subplots(len(sols_list), 3, figsize=(14, 7))
+        plt.subplots_adjust(wspace=0.4, hspace=0.4)
+
+        # Loop over solution sets
+
+        for i, (sols, num_sol, ylabel_str) in enumerate(zip(sols_list,
+                                                            num_sol_list,
+                                                            ylabel_str_list)):
+
+            # Initialize data structures
+
+            group_efl = np.empty((num_sol, num_group))
+            ttl = np.empty(num_sol)
+            bfl = np.empty(num_sol)
+
+            # Loop over all valid first-order solutions
+
+            for j, sol in enumerate(sols):
+
+                group_efl[j, :] = np.abs(sol.group_efl)
+                ttl[j] = sol.ttl
+                bfl[j] = sol.bfl
+
+            # Plot histogram of group EFL, VL, and BFL for all valid first-order
+            # solutions
+
+            # Plot histograms
+
+            axs[i, 0].hist(group_efl.flatten(), num_bin, color='#f8991d')
+            axs[i, 1].hist(ttl, num_bin, color='#93268f')
+            axs[i, 2].hist(bfl, num_bin, color='#129a48')
+
+            # Plot settings
+
+            axs[i, 0].set(xlabel='Group EFL, absolute value [mm]',
+                    ylabel=ylabel_str + 'solution groups')
+            axs[i, 1].set(xlabel='TTL [mm]', ylabel=ylabel_str + 'solutions')
+            axs[i, 2].set(xlabel='BFL [mm]', ylabel=ylabel_str + 'solutions')
+
+            axs[i, 0].set_xlim(self.config.efl_group_rng[0] - buffer_1,
+                         self.config.efl_group_rng[1] + buffer_1)
+            axs[i, 1].set_xlim(self.config.ttl_rng[0] - buffer_2,
+                         self.config.ttl_rng[1] + buffer_2)
+            axs[i, 2].set_xlim(self.config.bfl_rng[0] - buffer_3,
+                         self.config.bfl_rng[1] + buffer_3)
+
+            opacity = 0.25
+
+            rect_1_lower = ptc.Rectangle((self.config.efl_group_rng[0], 0),
+                                         -buffer_1, axs[i, 0].get_ylim()[1],
+                                         facecolor='k', alpha=opacity)
+            rect_1_upper = ptc.Rectangle((self.config.efl_group_rng[1], 0),
+                                         buffer_1, axs[i, 0].get_ylim()[1],
+                                         facecolor='k', alpha=opacity)
+            rect_2_lower = ptc.Rectangle((self.config.ttl_rng[0], 0),
+                                         -buffer_2, axs[i, 1].get_ylim()[1],
+                                         facecolor='k', alpha=opacity)
+            rect_2_upper = ptc.Rectangle((self.config.ttl_rng[1], 0),
+                                         buffer_2, axs[i, 1].get_ylim()[1],
+                                         facecolor='k', alpha=opacity)
+            rect_3_lower = ptc.Rectangle((self.config.bfl_rng[0], 0),
+                                         -buffer_3, axs[i, 2].get_ylim()[1],
+                                         facecolor='k', alpha=opacity)
+            rect_3_upper = ptc.Rectangle((self.config.bfl_rng[1], 0),
+                                         buffer_3, axs[i, 2].get_ylim()[1],
+                                         facecolor='k', alpha=opacity)
+
+            axs[i, 0].add_patch(rect_1_lower)
+            axs[i, 0].add_patch(rect_1_upper)
+            axs[i, 1].add_patch(rect_2_lower)
+            axs[i, 1].add_patch(rect_2_upper)
+            axs[i, 2].add_patch(rect_3_lower)
+            axs[i, 2].add_patch(rect_3_upper)
+
+        return
+
+    def group_efl_vs_spo(self):
+
+        # Initialize data structures
+
+        perf = {}
+
+        # Fill data structure with
+
+        for sol in self.sols_rt:
+
+            # Get power type
+
+            power_str, orient_str = self.split_sol_type(sol.sol_type)
+            if self.same_xy:
+                power_str = self.abbrev_power_type(power_str, orient_str)
+
+            # Fill dictionary with average spot size and average group EFL
+
+            try:
+                perf[power_str][0].append(np.mean(np.abs(sol.group_efl)))
+                perf[power_str][1].append(sol.avg_spot_size)
+            except KeyError:
+                perf[power_str] = [[np.mean(np.abs(sol.group_efl))],
+                                   [sol.avg_spot_size]]
+
+        # Initialize figure
+
+        fig, ax = plt.subplots()
+
+        # Plot scatter plot of average group EFL vs average spot size for
+        # different solution types
+
+        for key, vals in zip(perf.keys(), perf.values()):
+            avg_group_efl = vals[0]
+            avg_spot_size = vals[1]
+            ax.scatter(avg_group_efl, avg_spot_size, s=4, label=key)
+
+        # Plot settings
+
+        ax.set(xlabel='Average group EFL, absolute value [mm]',
+               ylabel='Average spot size [mm]')
+        ax.set_yscale('log')
+        ax.legend()
+
+        return

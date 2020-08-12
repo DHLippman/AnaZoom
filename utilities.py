@@ -220,3 +220,21 @@ def format_time_str(t):
         return '{0:0.2f} minutes'.format(t / 60)
     else:
         return '{0:0.2f} seconds'.format(t)
+
+
+def sort_dict(d):
+
+    """
+
+
+    Sorts a dictionary by values, descending
+
+
+    d:      dictionary to sort
+
+    """
+
+
+    return {k: v for k, v in sorted(d.items(),
+                                    key=lambda item: item[1],
+                                    reverse=True)}

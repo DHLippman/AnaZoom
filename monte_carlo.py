@@ -113,6 +113,10 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
             ana_zoom = AnamorphicZoom(config, sol, num_zoom=5,
                                       sol_num=sols.num_sol)
 
+            ana_zoom.plot_zoom()
+
+            return
+
             # Create model in CODE V
 
             ana_zoom.make_codev()
