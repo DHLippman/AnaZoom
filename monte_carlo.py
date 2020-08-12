@@ -113,10 +113,6 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
             ana_zoom = AnamorphicZoom(config, sol, num_zoom=5,
                                       sol_num=sols.num_sol)
 
-            ana_zoom.plot_zoom()
-
-            return
-
             # Create model in CODE V
 
             ana_zoom.make_codev()
@@ -397,7 +393,7 @@ def combine_cyl_sols(sol_x, sol_y, f1, f2_x, f2_y, f3_x, f3_y, f4):
     return group_z, group_efl, group_type
 
 
-def mc_search_sph_var(config, num_trial=1e6):
+def mc_search_sph_var(config, num_trial=1e6, save_all=False):
 
     """
 
@@ -424,7 +420,7 @@ def mc_search_sph_var(config, num_trial=1e6):
     # Create folder to store CODE V solutions in
 
     time_str = get_time_str()
-    path = 'C:\\CVUSER\\Anamorphic Zoom Solutions\\Cylindrical Variator\\' \
+    path = 'C:\\CVUSER\\Anamorphic Zoom Solutions\\Spherical Variator\\' \
            + time_str + '\\'
     folder_exist(path)
 
@@ -530,6 +526,12 @@ def mc_search_sph_var(config, num_trial=1e6):
 
                     ana_zoom.save_seq(path=path)
 
+            elif save_all:
+
+                # Write design to CODE V sequence file
+
+                ana_zoom.save_seq(path=path)
+
             # Add design to solutions
 
             sols.add_sol(ana_zoom)
@@ -559,9 +561,9 @@ def mc_search_sph_var(config, num_trial=1e6):
     if sols.num_sol:
         save_obj(sols, filename=time_str)
 
-    # Delete folder if no ray traceable solutions were found
+    # Delete folder if no solutions were saved
 
-    if not sols.num_sol_rt:
+    if not sols.num_sol or (not sols.num_sol_rt and not save_all):
         folder_exist(path, erase=True)
 
     return sols
