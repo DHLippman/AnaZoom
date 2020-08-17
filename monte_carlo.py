@@ -2,7 +2,7 @@
 Author:         David Henry Lippman
 File:           monte_carlo.py
 Date created:   07/22/20
-Date modified:  07/28/20
+Date modified:  08/13/20
 
 """
 
@@ -41,7 +41,7 @@ def mc_search_cyl_var(config, num_trial=1e6, same_xy=True):
 
     sols = Solutions(config, num_trial, "CYL", same_xy)
 
-    # Create folder to store CODE V solutions in
+    # Create folder to store CODE V solutions, if on Windows
 
     time_str = get_time_str()
     path = 'C:\\CVUSER\\Anamorphic Zoom Solutions\\Cylindrical Variator\\' \

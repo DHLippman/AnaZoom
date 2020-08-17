@@ -2,7 +2,7 @@
 Author:         David Henry Lippman
 File:           designs.py
 Date created:   07/22/20
-Date modified:  07/22/20
+Date modified:  08/17/20
 
 """
 
@@ -582,7 +582,13 @@ class AnamorphicZoom:
 
             # Form legend string
 
-            group_ind = np.ceil(i / 2).astype(int) + 1
+            if self.vari_str == "CYL":
+                group_ind = np.ceil(i / 2).astype(int) + 1
+            else:
+                if i < 3:
+                    group_ind = i + 1
+                else:
+                    group_ind = i
 
             type_str = self.group_type[i]
             if type_str == 'XY':
@@ -603,7 +609,7 @@ class AnamorphicZoom:
         # Set plot settings
 
         ax.set(title=self.sol_type,
-               xlabel="z [mm]",
+               xlabel="Group position, z [mm]",
                ylabel="EFX [mm]")
         ax_par.set(ylabel="EFY [mm]")
 
@@ -891,6 +897,15 @@ class Solutions:
 
     def type_sankey(self):
 
+        """
+
+
+        Makes a Sankey diagram of the Monte Carlo search process by solution
+        space type.
+
+
+        """
+
         # Initialize variables
 
         plot_fail_factor = 1  # how many times more unfound solutions to plot
@@ -1059,6 +1074,176 @@ class Solutions:
 
         """
 
+        # Create orientation-to-index dictionary
+
+        orient_ind = {'XXYY': 0,
+                      'XYXY': 1,
+                      'XYYX': 2,
+                      'YYXX': 3,
+                      'YXYX': 4,
+                      'YXXY': 5}
+        
+        # Create orientation hatching patterns
+
+        density = 3
+        orient_hatch = [density * '*', density * '.',
+                        density * "/", density * "\\",
+                        density * "x", density * "+"]
+
+
+        # Form dictionaries of valid first-order solutions for power and
+        # orientation
+
+        power_dict = {}
+
+        for key, val in zip(self.sol_type.keys(), self.sol_type.values()):
+
+            # Valid first-order solution type found
+
+            if val:
+
+                # Form orientation and power keys
+
+                orient_key = key[-4:]
+                if self.var_type == "CYL":
+                    if self.same_xy:
+                        power_key = key[0]
+                        for i, c in enumerate(orient_key):
+                            if c == 'X':
+                                power_key += key[i + 1]
+                        power_key += key[5]
+                    else:
+                        power_key = key[0: 6]
+
+                else:
+                    power_key = key[0: 3] + key[4]
+
+                # Update power dictionary
+
+                try:
+                    power_dict[power_key][0, orient_ind[orient_key]] += val
+                except KeyError:
+                    power_dict[power_key] = np.zeros((2, 6))
+                    power_dict[power_key][0, orient_ind[orient_key]] += val
+
+        # Add ray traceable solutions to dictionaries
+
+        for key, val in zip(self.sol_type_rt.keys(), self.sol_type_rt.values()):
+
+            # Ray traceable solution type found
+
+            if val:
+
+                # Form orientation and power keys
+
+                orient_key = key[-4:]
+                if self.var_type == "CYL":
+                    if self.same_xy:
+                        power_key = key[0]
+                        for i, c in enumerate(orient_key):
+                            if c == 'X':
+                                power_key += key[i + 1]
+                        power_key += key[5]
+                    else:
+                        power_key = key[0: 6]
+
+                else:
+                    power_key = key[0: 3] + key[4]
+
+                # Update power dictionary
+
+                power_dict[power_key][1, orient_ind[orient_key]] += val
+
+        # Remove PPPP due to internal image
+
+        if "PPPP" in power_dict:
+            power_dict.pop("PPPP")
+
+        # Determine dictionary sort order based no the number of valid first-
+        # order solutions
+
+        sol_types = np.array(list(power_dict.keys()), dtype='<U6')
+        num_sol_fo = np.array([val[0, :].sum()
+                               for val in list(power_dict.values())], dtype=int)
+        sol_types_sort = sol_types[num_sol_fo.argsort()[::-1]]
+
+        # Make solution array to make stacked bar chart
+
+        num_sol_types = len(sol_types)
+        num_sols_fo = np.zeros((6, num_sol_types), dtype=int)
+        num_sols_rt = np.zeros((6, num_sol_types), dtype=int)
+
+        for i, sol_type in enumerate(sol_types_sort):
+            num_sols_fo[:, i] = power_dict[sol_type][0, :].transpose()
+            num_sols_rt[:, i] = power_dict[sol_type][1, :].transpose()
+
+        # Initialize figure
+
+        font = {'size': 14}
+        plt.rc('font', **font)
+        fig, ax1 = plt.subplots(figsize=(12, 6))
+        ax2 = ax1.twinx()
+
+        color1 = '#1b75bb'  # blue
+        color2 = '#37b34a'  # green
+
+        ind = np.arange(num_sol_types)  # the label locations
+        width = 0.4  # the width of the bars
+
+        # Plot bar charts
+
+        # Loop over orientation rows
+
+        for i, (orient_fo, orient_rt) in enumerate(zip(num_sols_fo,
+                                                       num_sols_rt)):
+
+            # Valid first-order solutions
+
+            ax1.bar(ind - width / 2, orient_fo, width=width,
+                    bottom=np.sum(num_sols_fo[0: i, :], axis=0),
+                    facecolor=color1, edgecolor='k', hatch=orient_hatch[i])
+
+            # Ray traceable solutions
+
+            ax2.bar(ind + width / 2, orient_rt, width=width,
+                    bottom=np.sum(num_sols_rt[0: i, :], axis=0),
+                    facecolor=color2, edgecolor='k', hatch=orient_hatch[i])
+
+        # Plot settings
+
+        ax1.set_ylabel('Valid first-order solutions', color=color1)
+        ax2.set_ylabel('Ray traceable solutions', color=color2)
+        ax1.tick_params(axis='y', labelcolor=color1)
+        ax2.tick_params(axis='y', labelcolor=color2)
+        ax1.set_ylim(0, 1.08 * np.sum(num_sols_fo, axis=0).max())
+        ax2.set_ylim(0, 1.08 * np.sum(num_sols_rt, axis=0).max())
+
+        ax1.set_xticks(ind)
+        ax1.set_xticklabels(sol_types_sort, rotation=45)
+
+        # Make custom legend
+
+        legend_elements = []
+        for hatch, key in zip(orient_hatch, orient_ind.keys()):
+            legend_elements.append(ptc.Patch(facecolor='w', edgecolor='k',
+                                             hatch=hatch, label=key))
+        legend_elements = legend_elements[::-1]
+
+        ax1.legend(handles=legend_elements)
+
+        return
+
+    def type_breakdown_sep(self):
+
+        """
+
+
+        Plots breakdown of solution types based on power and cylinder
+        orientation in separate bar charts
+
+
+        """
+
         # Form dictionaries of valid first-order solutions for power and orientation
 
         power_dict = {}
@@ -1218,174 +1403,16 @@ class Solutions:
 
         return
 
-    def type_breakdown_hatch(self):
-
-        """
-
-
-        Plots breakdown of solution types based on power and cylinder
-        orientation
-
-
-        """
-
-        # Create orientation-to-index dictionary
-
-        orient_ind = {'XXYY': 0,
-                      'XYXY': 1,
-                      'XYYX': 2,
-                      'YYXX': 3,
-                      'YXYX': 4,
-                      'YXXY': 5}
-        
-        # Create orientation hatching patterns
-
-        density = 3
-        orient_hatch = [density * "/", density * "\\",
-                        2 * density * "/", 2 * density * "\\",
-                        density * "X",
-                        density * "+"]
-
-        # Form dictionaries of valid first-order solutions for power and
-        # orientation
-
-        power_dict = {}
-
-        for key, val in zip(self.sol_type.keys(), self.sol_type.values()):
-
-            # Valid first-order solution type found
-
-            if val:
-
-                # Form orientation and power keys
-
-                orient_key = key[-4:]
-                if self.var_type == "CYL":
-                    if self.same_xy:
-                        power_key = key[0]
-                        for i, c in enumerate(orient_key):
-                            if c == 'X':
-                                power_key += key[i + 1]
-                        power_key += key[5]
-                    else:
-                        power_key = key[0: 6]
-
-                else:
-                    power_key = key[0: 3] + key[4]
-
-                # Update power dictionary
-
-                try:
-                    power_dict[power_key][0, orient_ind[orient_key]] += val
-                except KeyError:
-                    power_dict[power_key] = np.zeros((2, 6))
-                    power_dict[power_key][0, orient_ind[orient_key]] += val
-
-        # Add ray traceable solutions to dictionaries
-
-        for key, val in zip(self.sol_type_rt.keys(), self.sol_type_rt.values()):
-
-            # Ray traceable solution type found
-
-            if val:
-
-                # Form orientation and power keys
-
-                orient_key = key[-4:]
-                if self.var_type == "CYL":
-                    if self.same_xy:
-                        power_key = key[0]
-                        for i, c in enumerate(orient_key):
-                            if c == 'X':
-                                power_key += key[i + 1]
-                        power_key += key[5]
-                    else:
-                        power_key = key[0: 6]
-
-                else:
-                    power_key = key[0: 3] + key[4]
-
-                # Update power dictionary
-
-                power_dict[power_key][1, orient_ind[orient_key]] += val
-
-        # Remove PPPP due to internal image
-
-        if "PPPP" in power_dict:
-            power_dict.pop("PPPP")
-
-        # Determine dictionary sort order based no the number of valid first-
-        # order solutions
-
-        sol_types = np.array(list(power_dict.keys()), dtype='<U6')
-        num_sol_fo = np.array([val[0, :].sum()
-                               for val in list(power_dict.values())], dtype=int)
-        sol_types_sort = sol_types[num_sol_fo.argsort()[::-1]]
-
-        # Make solution array to make stacked bar chart
-
-        num_sol_types = len(sol_types)
-        num_sols_fo = np.zeros((6, num_sol_types), dtype=int)
-        num_sols_rt = np.zeros((6, num_sol_types), dtype=int)
-
-        for i, sol_type in enumerate(sol_types_sort):
-            num_sols_fo[:, i] = power_dict[sol_type][0, :].transpose()
-            num_sols_rt[:, i] = power_dict[sol_type][1, :].transpose()
-
-        # Initialize figure
-
-        fig, ax1 = plt.subplots(figsize=(10, 6))
-        ax2 = ax1.twinx()
-
-        color1 = '#1b75bb'  # blue
-        color2 = '#37b34a'  # green
-
-        ind = np.arange(num_sol_types)  # the label locations
-        width = 0.4  # the width of the bars
-
-        # Plot bar charts
-
-        # Loop over orientation rows
-
-        for i, (orient_fo, orient_rt) in enumerate(zip(num_sols_fo,
-                                                       num_sols_rt)):
-
-            # Valid first-order solutions
-
-            ax1.bar(ind - width / 2, orient_fo, width=width,
-                    bottom=np.sum(num_sols_fo[0: i, :], axis=0),
-                    facecolor=color1, edgecolor='k', hatch=orient_hatch[i])
-
-            # Ray traceable solutions
-
-            ax2.bar(ind + width / 2, orient_rt, width=width,
-                    bottom=np.sum(num_sols_rt[0: i, :], axis=0),
-                    facecolor=color2, edgecolor='k', hatch=orient_hatch[i])
-
-        # Plot settings
-
-        ax1.set_ylabel('Valid first-order solutions', color=color1)
-        ax2.set_ylabel('Ray traceable solutions', color=color2)
-        ax1.tick_params(axis='y', labelcolor=color1)
-        ax2.tick_params(axis='y', labelcolor=color2)
-        ax1.set_ylim(0, 1.08 * np.sum(num_sols_fo, axis=0).max())
-        ax2.set_ylim(0, 1.08 * np.sum(num_sols_rt, axis=0).max())
-
-        ax1.set_xticks(ind)
-        ax1.set_xticklabels(sol_types_sort, rotation=45)
-
-        # Make custom legend
-
-        legend_elements = []
-        for hatch, key in zip(orient_hatch, orient_ind.keys()):
-            legend_elements.append(ptc.Patch(facecolor='w', edgecolor='k',
-                                             hatch=hatch, label=key))
-
-        ax1.legend(handles=legend_elements)
-
-        return
-
     def type_vs_spo(self):
+
+        """
+
+
+        Makes a violin plot of average spot size for different ray traceable
+        solution spaces
+
+
+        """
 
         # Initialize data structures
 
@@ -1464,6 +1491,15 @@ class Solutions:
         return
 
     def type_vs_packaging(self):
+
+        """
+
+
+        Makes violin plots of TTL, BFL, and clear aperture for different ray
+        traceable solution spaces
+
+
+        """
 
         # Initialize data structures
 
@@ -1657,6 +1693,15 @@ class Solutions:
 
     def analyze_search_bound(self):
 
+        """
+
+
+        Makes histograms of the group EFL, TTL, and BFL Monte Carlo boundary
+        conditions for both valid first-order and ray traceable solutions
+
+
+        """
+
         # Initialize variables
 
         sols_list = [self.sols, self.sols_rt]
@@ -1752,6 +1797,15 @@ class Solutions:
         return
 
     def group_efl_vs_spo(self):
+
+        """
+
+
+        Makes a scatter plot of group EFL vs average spot size for all ray
+        traceable solution spaces
+
+
+        """
 
         # Initialize data structures
 

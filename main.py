@@ -2,16 +2,15 @@
 Author:         David Henry Lippman
 File:           main.py
 Date created:   07/20/20
-Date modified:  07/20/20
+Date modified:  08/17/20
 
 """
 
 from designs import SystemConfig, AnamorphicZoom, Solutions
 from monte_carlo import mc_search_cyl_var, mc_search_sph_var
-from utilities import load_obj, save_obj, folder_exist, sort_dict
+from utilities import load_obj
 import numpy as np
 import matplotlib.pyplot as plt
-from time import time
 
 
 def main():
@@ -25,7 +24,6 @@ def main():
     # Perform Monte Carlo search for cylindrical variator solutions
 
     sols = mc_search_cyl_var(config, num_trial=1e6, same_xy=True)
-    # sols = mc_search_sph_var(config, num_trial=1e6)
     
     print(sols)
 
