@@ -8,21 +8,21 @@ Date modified:  08/10/20
 
 from utilities import find_roc
 import numpy as np
-# from win32com.client import DispatchWithEvents
-# import pythoncom
+from win32com.client import DispatchWithEvents
+import pythoncom
 import sys
 
 
-class DispatchWithEvents:
-
-    def __init__(self, arg1, arg2):
-        self.StartingDirectory = ''
-
-    def StartCodeV(self):
-        return
-
-    def Command(self, arg1):
-        return
+# class DispatchWithEvents:
+#
+#     def __init__(self, arg1, arg2):
+#         self.StartingDirectory = ''
+#
+#     def StartCodeV(self):
+#         return
+#
+#     def Command(self, arg1):
+#         return
 
 
 class ICVApplicationEvents:
