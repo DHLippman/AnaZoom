@@ -2,7 +2,7 @@
 Author:         David Henry Lippman
 File:           designs.py
 Date created:   07/22/20
-Date modified:  08/17/20
+Date modified:  08/18/20
 
 """
 
@@ -547,10 +547,10 @@ class AnamorphicZoom:
 
         # Initialize plot variables
 
-        clrs = np.empty_like(self.group_type)
-        clrs[self.group_type == 'XY'] = 'b'
-        clrs[self.group_type == 'X'] = 'g'
-        clrs[self.group_type == 'Y'] = 'g'
+        if self.vari_str[0: 3].upper() == "CYL":
+            clrs = np.array(['b', 'g', 'g', 'g', 'g', 'b'])
+        else:  # SPH
+            clrs = np.array(['b', 'g', 'g', 'g', 'b'])
 
         lstyles = np.empty_like(self.group_type)
         lstyles[self.group_type == 'XY'] = '-'
@@ -582,7 +582,7 @@ class AnamorphicZoom:
 
             # Form legend string
 
-            if self.vari_str == "CYL":
+            if self.vari_str[0: 3].upper() == "CYL":
                 group_ind = np.ceil(i / 2).astype(int) + 1
             else:
                 if i < 3:
@@ -1182,7 +1182,19 @@ class Solutions:
         font = {'size': 14}
         plt.rc('font', **font)
         fig, ax1 = plt.subplots(figsize=(12, 6))
+        plt.subplots_adjust(left=0.2)
+
+        # Create second y-axis
+
         ax2 = ax1.twinx()
+        ax2.spines["left"].set_position(("axes", -0.15))
+        ax2.set_frame_on(True)
+        ax2.patch.set_visible(False)
+        for sp in ax2.spines.values():
+            sp.set_visible(False)
+        ax2.spines["left"].set_visible(True)
+        ax2.yaxis.set_label_position('left')
+        ax2.yaxis.set_ticks_position('left')
 
         color1 = '#1b75bb'  # blue
         color2 = '#37b34a'  # green
@@ -1215,11 +1227,24 @@ class Solutions:
         ax2.set_ylabel('Ray traceable solutions', color=color2)
         ax1.tick_params(axis='y', labelcolor=color1)
         ax2.tick_params(axis='y', labelcolor=color2)
-        ax1.set_ylim(0, 1.08 * np.sum(num_sols_fo, axis=0).max())
-        ax2.set_ylim(0, 1.08 * np.sum(num_sols_rt, axis=0).max())
-
         ax1.set_xticks(ind)
         ax1.set_xticklabels(sol_types_sort, rotation=45)
+
+        # Set y limits
+
+        buffer = 0.1
+
+        fo_max = np.sum(num_sols_fo, axis=0).max()
+        fo_max_round = np.ceil(fo_max / 1000) * 1000  # round up to the nearest
+                                                      # thousand
+        if fo_max_round - fo_max < fo_max * buffer:
+            fo_max_round += 1000
+
+        rt_max = np.sum(num_sols_rt, axis=0).max()
+        rt_max_round = np.ceil(rt_max / 1000) * 1000  # round up to the nearest
+                                                      # thousand
+        ax1.set_ylim(0, fo_max_round)
+        ax2.set_ylim(0, rt_max_round)
 
         # Make custom legend
 
@@ -1239,15 +1264,31 @@ class Solutions:
 
 
         Plots breakdown of solution types based on power and cylinder
-        orientation in separate bar charts
+        orientation, separated by valid first-order and ray traceable solutions
 
 
         """
 
-        # Form dictionaries of valid first-order solutions for power and orientation
+        # Create orientation-to-index dictionary
+
+        orient_ind = {'XXYY': 0,
+                      'XYXY': 1,
+                      'XYYX': 2,
+                      'YYXX': 3,
+                      'YXYX': 4,
+                      'YXXY': 5}
+
+        # Create orientation hatching patterns
+
+        density = 3
+        orient_hatch = [density * '*', density * '.',
+                        density * "/", density * "\\",
+                        density * "x", density * "+"]
+
+        # Form dictionaries of valid first-order solutions for power and
+        # orientation
 
         power_dict = {}
-        orient_dict = {}
 
         for key, val in zip(self.sol_type.keys(), self.sol_type.values()):
 
@@ -1274,29 +1315,10 @@ class Solutions:
                 # Update power dictionary
 
                 try:
-                    power_dict[power_key] += val
+                    power_dict[power_key][0, orient_ind[orient_key]] += val
                 except KeyError:
-                    power_dict[power_key] = val
-
-                # Update orientation dictionary
-
-                try:
-                    orient_dict[orient_key] += val
-                except KeyError:
-                    orient_dict[orient_key] = val
-
-        # Sort dictionaries by value, descending
-
-        power_dict = sort_dict(power_dict)
-        orient_dict = sort_dict(orient_dict)
-
-        # Expand dictionaries to have list values for ray tracing results also
-
-        for key in power_dict:
-            power_dict[key] = [power_dict[key], 0]
-
-        for key in orient_dict:
-            orient_dict[key] = [orient_dict[key], 0]
+                    power_dict[power_key] = np.zeros((2, 6))
+                    power_dict[power_key][0, orient_ind[orient_key]] += val
 
         # Add ray traceable solutions to dictionaries
 
@@ -1324,82 +1346,101 @@ class Solutions:
 
                 # Update power dictionary
 
-                power_dict[power_key][1] += val
-
-                # Update orientation dictionary
-
-                orient_dict[orient_key][1] += val
+                power_dict[power_key][1, orient_ind[orient_key]] += val
 
         # Remove PPPP due to internal image
 
         if "PPPP" in power_dict:
             power_dict.pop("PPPP")
 
-        # Form power lists for bar chart
+        # Determine dictionary sort order based no the number of valid first-
+        # order solutions
 
-        power_labels = []
-        sols_power_fo = []
-        sols_power_rt = []
+        sol_types = np.array(list(power_dict.keys()), dtype='<U6')
+        num_sol_fo = np.array([val[0, :].sum()
+                               for val in list(power_dict.values())], dtype=int)
+        sol_types_sort = sol_types[num_sol_fo.argsort()[::-1]]
 
-        for key, val in zip(power_dict.keys(), power_dict.values()):
-            power_labels.append(key)
-            sols_power_fo.append(val[0])
-            sols_power_rt.append(val[1])
+        # Make solution array to make stacked bar chart
 
-        # Form orientation lists for bar chart
+        num_sol_types = len(sol_types)
+        num_sols_fo = np.zeros((6, num_sol_types), dtype=int)
+        num_sols_rt = np.zeros((6, num_sol_types), dtype=int)
 
-        orient_labels = []
-        sols_orient_fo = []
-        sols_orient_rt = []
-
-        for key, val in zip(orient_dict.keys(), orient_dict.values()):
-            orient_labels.append(key)
-            sols_orient_fo.append(val[0])
-            sols_orient_rt.append(val[1])
+        for i, sol_type in enumerate(sol_types_sort):
+            num_sols_fo[:, i] = power_dict[sol_type][0, :].transpose()
+            num_sols_rt[:, i] = power_dict[sol_type][1, :].transpose()
 
         # Initialize figure
 
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6.5))
-        plt.subplots_adjust(hspace=0.4)
-        ax1b = ax1.twinx()
-        ax2b = ax2.twinx()
+        font = {'size': 14}
+        plt.rc('font', **font)
+        plt.rcParams['hatch.linewidth'] = 0.6
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        plt.subplots_adjust(wspace=0.35)
 
-        color1 = '#1b75bb'
-        color2 = '#37b34a'
+        color1 = '#1b75bb'  # blue
+        color2 = '#37b34a'  # green
+
+        ind = np.arange(num_sol_types)  # the label locations
+        width = 0.8  # the width of the bars
 
         # Plot bar charts
 
-        # Power
+        # Loop over orientation rows
 
-        x = np.arange(len(power_labels))  # the label locations
-        width = 0.4  # the width of the bars
+        for i, (orient_fo, orient_rt) in enumerate(zip(num_sols_fo,
+                                                       num_sols_rt)):
+            # Valid first-order solutions
 
-        ax1.bar(x - width / 2, sols_power_fo, width=width, color=color1)
-        ax1b.bar(x + width / 2, sols_power_rt, width=width, color=color2)
+            ax1.bar(ind, orient_fo, width=width,
+                    bottom=np.sum(num_sols_fo[0: i, :], axis=0),
+                    facecolor=color1, edgecolor='k', hatch=orient_hatch[i])
+
+            # Ray traceable solutions
+
+            ax2.bar(ind, orient_rt, width=width,
+                    bottom=np.sum(num_sols_rt[0: i, :], axis=0),
+                    facecolor=color2, edgecolor='k', hatch=orient_hatch[i])
+
+        # Plot settings
 
         ax1.set_ylabel('Valid first-order solutions', color=color1)
+        ax2.set_ylabel('Ray traceable solutions', color=color2)
         ax1.tick_params(axis='y', labelcolor=color1)
-        ax1b.set_ylabel('Ray traceable solutions', color=color2)
-        ax1b.tick_params(axis='y', labelcolor=color2)
+        ax2.tick_params(axis='y', labelcolor=color2)
 
-        ax1.set_xticks(x)
-        ax1.set_xticklabels(power_labels, rotation=45)
+        ax1.set_xticks(ind)
+        ax2.set_xticks(ind)
+        ax1.set_xticklabels(sol_types_sort, rotation=45)
+        ax2.set_xticklabels(sol_types_sort, rotation=45)
 
-        # Orientation
+        # Set y limits
 
-        x = np.arange(len(orient_labels))  # the label locations
-        width = 0.4  # the width of the bars
+        buffer = 0.1
 
-        ax2.bar(x - width / 2, sols_orient_fo, width=width, color=color1)
-        ax2b.bar(x + width / 2, sols_orient_rt, width=width, color=color2)
+        fo_max = np.sum(num_sols_fo, axis=0).max()
+        fo_max_round = np.ceil(fo_max / 1000) * 1000  # round up to the nearest
+                                                      # thousand
+        if fo_max_round - fo_max < fo_max * buffer:
+            fo_max_round += 1000
 
-        ax2.set_ylabel('Valid first-order solutions', color=color1)
-        ax2.tick_params(axis='y', labelcolor=color1)
-        ax2b.set_ylabel('Ray traceable solutions', color=color2)
-        ax2b.tick_params(axis='y', labelcolor=color2)
+        rt_max = np.sum(num_sols_rt, axis=0).max()
+        rt_max_round = np.ceil(rt_max / 1000) * 1000  # round up to the nearest
+                                                      # thousand
+        ax1.set_ylim(0, fo_max_round)
+        ax2.set_ylim(0, rt_max_round)
 
-        ax2.set_xticks(x)
-        ax2.set_xticklabels(orient_labels, rotation=45)
+        # Make custom legend
+
+        legend_elements = []
+        for hatch, key in zip(orient_hatch, orient_ind.keys()):
+            legend_elements.append(ptc.Patch(facecolor='w', edgecolor='k',
+                                             hatch=hatch, label=key))
+        legend_elements = legend_elements[::-1]
+
+        ax1.legend(handles=legend_elements)
+        ax2.legend(handles=legend_elements)
 
         return
 
@@ -1449,7 +1490,9 @@ class Solutions:
 
         # Initialize figure
 
-        fig, ax = plt.subplots()
+        font = {'size': 20}
+        plt.rc('font', **font)
+        fig, ax = plt.subplots(figsize=(12, 7))
 
         # Plot violin plot of average spot size for different solution types
 
@@ -1540,8 +1583,10 @@ class Solutions:
 
         # Initialize figure
 
+        font = {'size': 12}
+        plt.rc('font', **font)
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(14, 5))
-        plt.subplots_adjust(wspace=0.3)
+        plt.subplots_adjust(wspace=0.3, left=0.05, right=0.98)
         num_type = len(ttl)
         inds = np.arange(num_type) + 1
 
@@ -1706,8 +1751,10 @@ class Solutions:
 
         sols_list = [self.sols, self.sols_rt]
         num_sol_list = [self.num_sol, self.num_sol_rt]
-        ylabel_str_list = ['Valid first-order ', 'Ray traceable ']
+        ylabel_str_list = ['VFO ', 'VFO-RT ']
+        # ylabel_str_list = ['VFO ', 'RT ']
 
+        num_ticks = 4
         num_bin = 100
         num_group = 5
         if self.var_type == 'CYL':
@@ -1720,6 +1767,8 @@ class Solutions:
 
         # Initialize figure
 
+        font = {'size': 12}
+        plt.rc('font', **font)
         fig, axs = plt.subplots(len(sols_list), 3, figsize=(14, 7))
         plt.subplots_adjust(wspace=0.4, hspace=0.4)
 
@@ -1728,7 +1777,6 @@ class Solutions:
         for i, (sols, num_sol, ylabel_str) in enumerate(zip(sols_list,
                                                             num_sol_list,
                                                             ylabel_str_list)):
-
             # Initialize data structures
 
             group_efl = np.empty((num_sol, num_group))
@@ -1754,19 +1802,29 @@ class Solutions:
 
             # Plot settings
 
-            axs[i, 0].set(xlabel='Group EFL, absolute value [mm]',
-                    ylabel=ylabel_str + 'solution groups')
+            axs[i, 0].set(xlabel='Group EFL [mm]',
+                          ylabel=ylabel_str + 'solution groups')
             axs[i, 1].set(xlabel='TTL [mm]', ylabel=ylabel_str + 'solutions')
             axs[i, 2].set(xlabel='BFL [mm]', ylabel=ylabel_str + 'solutions')
 
             axs[i, 0].set_xlim(self.config.efl_group_rng[0] - buffer_1,
-                         self.config.efl_group_rng[1] + buffer_1)
+                               self.config.efl_group_rng[1] + buffer_1)
             axs[i, 1].set_xlim(self.config.ttl_rng[0] - buffer_2,
-                         self.config.ttl_rng[1] + buffer_2)
+                               self.config.ttl_rng[1] + buffer_2)
             axs[i, 2].set_xlim(self.config.bfl_rng[0] - buffer_3,
-                         self.config.bfl_rng[1] + buffer_3)
+                               self.config.bfl_rng[1] + buffer_3)
 
-            opacity = 0.25
+            axs[i, 0].set_xticks(np.linspace(self.config.efl_group_rng[0],
+                                             self.config.efl_group_rng[1],
+                                             num_ticks))
+            axs[i, 1].set_xticks(np.linspace(self.config.ttl_rng[0],
+                                             self.config.ttl_rng[1],
+                                             num_ticks))
+            axs[i, 2].set_xticks(np.linspace(self.config.bfl_rng[0],
+                                             self.config.bfl_rng[1],
+                                             num_ticks))
+
+            opacity = 0.15
 
             rect_1_lower = ptc.Rectangle((self.config.efl_group_rng[0], 0),
                                          -buffer_1, axs[i, 0].get_ylim()[1],
